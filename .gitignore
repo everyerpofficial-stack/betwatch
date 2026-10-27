@@ -4,6 +4,7 @@
 *.db-shm
 *.db
 !backend/betwatch.db
+!backend/app/betwatch.db
 __pycache__/
 *.py[cod]
 *$py.class

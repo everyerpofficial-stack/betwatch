@@ -78,6 +78,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BetWatch API", version="1.0.0", lifespan=lifespan,
               description="News, video and social coverage of betting, gaming and regulation.")
 
+
+@app.middleware("http")
+async def vercel_path_rewrite_middleware(request: Request, call_next):
+    matched = request.headers.get("x-matched-path")
+    if matched:
+        clean_path = matched.split("?")[0]
+        if clean_path and clean_path != "/api/index.py":
+            request.scope["path"] = clean_path
+    elif request.scope.get("path") in ("/api/index.py", "/api/index"):
+        request.scope["path"] = "/"
+    return await call_next(request)
+
+
 Tab = Literal["day", "week", "month", "year", "all"]
 
 
@@ -724,6 +737,7 @@ if FRONTEND and FRONTEND.exists():
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
     @app.get("/", include_in_schema=False)
+    @app.get("/api/index.py", include_in_schema=False)
     def index():
         return FileResponse(FRONTEND / "index.html")
 

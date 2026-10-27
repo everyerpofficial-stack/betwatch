@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BetWatch admin</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+  table.t{width:100%;border-collapse:collapse;font-size:13px}
+  table.t th{text-align:left;padding:10px 8px;border-bottom:1px solid #E5E7EB}
+  table.t td{padding:8px;border-top:1px solid #F3F4F6;vertical-align:top}
+  .bad{color:#9A3412;font-weight:600}.ok{color:#1E40AF;font-weight:600}
+  .form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  .form input,.form select{min-height:42px;padding:0 10px;border:1px solid #D1D5DB;border-radius:8px;font:500 14px 'IBM Plex Sans',sans-serif}
+  .form label{display:flex;flex-direction:column;gap:6px}
+  .scroll{overflow-x:auto}
+  input.int{width:72px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap top-in">
+  <div class="brand"><div><div class="brand-name">BetWatch admin</div><div class="brand-sub">Sources, subjects, collection health and exports</div></div></div>
+  <div class="top-right"><a class="btn-amber" href="/">Dashboard</a></div>
+</div></header>
+
+<div class="wrap body">
+  <section class="card form" id="login">
+    <label>Admin token <input type="password" id="token" autocomplete="current-password" placeholder="ADMIN_TOKEN from .env"></label>
+    <button class="peek" id="go" type="button">Unlock</button>
+    <span class="muted" id="loginmsg"></span>
+  </section>
+
+  <div id="panel" hidden style="display:flex;flex-direction:column;gap:20px">
+    <section class="card stack">
+      <h3>Tracked subjects</h3>
+      <form class="form" id="addsub">
+        <label>Name <input name="name" required placeholder="e.g. Shefali Bagga"></label>
+        <label>Search query <input name="query" placeholder="defaults to the name"></label>
+        <label>Aliases (comma separated) <input name="aliases" placeholder="optional"></label>
+        <button class="peek" type="submit">Track subject</button>
+      </form>
+      <div class="scroll"><table class="t" id="subs"></table></div>
+    </section>
+
+    <section class="card stack">
+      <h3>Sources</h3>
+      <form class="form" id="addsrc">
+        <label>Name <input name="name" required placeholder="RSS · Outlet name"></label>
+        <label>Type <select name="kind"><option value="rss">RSS / Atom feed</option><option value="youtube_channel">YouTube channel feed</option><option value="instagram_search">Instagram search</option></select></label>
+        <label>Feed URL <input name="url" type="url" required placeholder="https://…"></label>
+        <label>Outlet name <input name="outlet_name" required></label>
+        <label>Country <input name="country" maxlength="2" placeholder="IN" style="width:70px"></label>
+        <label>Every (min) <input name="interval_minutes" type="number" min="2" value="15" class="int"></label>
+        <button class="peek" type="submit">Add source</button>
+      </form>
+      <div class="scroll"><table class="t" id="srcs"></table></div>
+    </section>
+
+    <section class="card stack">
+      <h3>Quick Ingest: Instagram Post or Reel</h3>
+      <form id="ingesturl" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input name="url" type="url" required placeholder="https://www.instagram.com/reel/… or /p/…" style="flex:1;min-width:280px">
+        <button class="peek" type="submit">Ingest now</button>
+      </form>
+      <div id="ingestres" class="muted" style="font-size:13px"></div>
+    </section>
+
+    <section class="card stack">
+      <h3>Channel Profiles &amp; Manual Facts</h3>
+      <p class="muted small" style="margin:0">Add legal cases, wins/losses, share capital, or override Wikidata QID. (Requires source URL and date).</p>
+      <div class="form">
+        <label>Select Channel <select id="fact-outlet" style="min-width:260px"></select></label>
+      </div>
+
+      <form class="form" id="wiki-form" style="padding-top:10px;border-top:1px solid #F3F4F6">
+        <label>Wikidata QID override <input id="wiki-qid" placeholder="e.g. Q468087" style="width:140px"></label>
+        <button class="peek" type="submit">Sync Wikidata</button>
+        <span id="wiki-msg" class="muted small"></span>
+      </form>
+
+      <form class="form" id="fact-form" style="padding-top:10px;border-top:1px solid #F3F4F6">
+        <label>Category
+          <select id="fact-cat">
+            <option value="legal_cases">Legal cases</option>
+            <option value="wins_losses">Wins / Losses</option>
+            <option value="share_capital">Share capital</option>
+            <option value="offices">Offices</option>
+          </select>
+        </label>
+        <label style="flex:1;min-width:260px">Fact description <input id="fact-desc" required placeholder="e.g. High Court ruling on gaming license"></label>
+        <label style="flex:1;min-width:200px">Source URL <input id="fact-url" type="url" required placeholder="https://…"></label>
+        <label>As of Date <input id="fact-date" required placeholder="e.g. 15 Oct 2026" style="width:130px"></label>
+        <button class="peek" type="submit">Save manual fact</button>
+      </form>
+      <div id="fact-msg" class="muted small"></div>
+    </section>
+
+    <section class="card stack">
+      <h3>Recent collection runs</h3>
+      <div class="tags"><button class="peek" id="refresh" type="button">Refresh</button><button class="peek" id="csv" type="button">Export CSV (last 12 months)</button><button class="peek" id="json" type="button">Export JSON</button></div>
+      <div class="scroll"><table class="t" id="runs"></table></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  let token = sessionStorage.getItem("bw_admin") || "";
+  async function api(path, opts = {}) {
+    const r = await fetch(path, Object.assign({}, opts, { headers: Object.assign({ "Authorization": "Bearer " + token, "Content-Type": "application/json" }, opts.headers || {}) }));
+    if (r.status === 401 || r.status === 503) { $("panel").hidden = true; $("loginmsg").textContent = (await r.json()).detail; throw new Error("auth"); }
+    if (!r.ok) { const t = await r.text(); alert("Error: " + t); throw new Error(t); }
+    return r.status === 204 ? null : (r.headers.get("content-type") || "").includes("json") ? r.json() : r.blob();
+  }
+  async function loadAll() {
+    const [subs, srcs, runs, outlets] = await Promise.all([
+      fetch("/api/subjects").then((r) => r.json()),
+      api("/api/admin/sources"),
+      api("/api/admin/runs?limit=80"),
+      api("/api/admin/outlets")
+    ]);
+    $("panel").hidden = false; $("login").hidden = true;
+    if ($("fact-outlet") && outlets) {
+      $("fact-outlet").innerHTML = outlets.map((o) => `<option value="${o.id}">${esc(o.name)} (${esc(o.kind)})</option>`).join("");
+    }
+    $("subs").innerHTML = `<tr><th>Subject</th><th>Query</th><th>Posts</th><th>Channels</th><th>Latest</th><th>Enabled</th><th></th></tr>` +
+      subs.map((s) => `<tr><td><strong>${esc(s.name)}</strong></td><td>${esc(s.query)}</td><td>${s.posts}</td><td>${s.outlets}</td><td>${esc(s.last)}</td>
+      <td><input type="checkbox" data-subtoggle="${s.id}" ${s.enabled ? "checked" : ""} aria-label="Enabled"></td><td><button class="peek" data-subdel="${s.id}">Remove</button></td></tr>`).join("");
+    $("srcs").innerHTML = `<tr><th>Source</th><th>Type</th><th>Status</th><th>Last success</th><th>Every (min)</th><th>Enabled</th><th></th></tr>` +
+      srcs.map((s) => `<tr><td><strong>${esc(s.name)}</strong><div class="muted">${esc(s.notes || s.url || "")}</div></td><td>${esc(s.kind)}</td>
+      <td>${s.failures ? `<span class="bad">failing ×${s.failures}</span><div class="muted">${esc(s.last_error)}</div>` : s.last_success ? `<span class="ok">ok</span>` : "not run"}</td>
+      <td>${esc(s.last_success || "—")}</td><td><input class="int" type="number" min="2" value="${s.interval_minutes}" data-interval="${s.id}" aria-label="Interval minutes"></td>
+      <td><input type="checkbox" data-srctoggle="${s.id}" ${s.enabled ? "checked" : ""} aria-label="Enabled"></td>
+      <td style="white-space:nowrap"><button class="peek" data-run="${s.id}">Run now</button> <button class="peek" data-srcdel="${s.id}">Delete</button></td></tr>`).join("");
+    $("runs").innerHTML = `<tr><th>Started</th><th>Source</th><th>Subject</th><th>Status</th><th>Fetched</th><th>New</th><th>Dupes</th><th>Latency</th><th>Median delay</th></tr>` +
+      runs.map((r) => `<tr><td>${esc(r.started)}</td><td>${esc(r.source)}</td><td>${esc(r.subject || "—")}</td><td>${r.status === "ok" ? `<span class="ok">ok</span>` : `<span class="bad">${esc(r.status)}</span><div class="muted">${esc(r.error)}</div>`}</td>
+      <td>${r.fetched}</td><td>${r.new}</td><td>${r.duplicates}</td><td>${r.latency_ms != null ? r.latency_ms + " ms" : "—"}</td><td>${r.median_delay_minutes != null ? r.median_delay_minutes.toFixed(1) + " min" : "—"}</td></tr>`).join("");
+  }
+  $("go").onclick = () => { token = $("token").value.trim(); sessionStorage.setItem("bw_admin", token); loadAll(); };
+  $("refresh").onclick = loadAll;
+  async function dl(fmt) {
+    const b = await api(`/api/admin/export?format=${fmt}&time=year`);
+    const blob = b instanceof Blob ? b : new Blob([JSON.stringify(b, null, 1)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "betwatch-export." + fmt; a.click();
+  }
+  $("csv").onclick = () => dl("csv"); $("json").onclick = () => dl("json");
+  $("addsub").onsubmit = async (e) => { e.preventDefault(); const f = new FormData(e.target);
+    await api("/api/admin/subjects", { method: "POST", body: JSON.stringify({ name: f.get("name"), query: f.get("query") || null, aliases: (f.get("aliases") || "").split(",").map((s) => s.trim()).filter(Boolean) }) });
+    e.target.reset(); alert("Subject added. Collection has started — refresh in a minute."); loadAll(); };
+  $("addsrc").onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+    f.interval_minutes = Number(f.interval_minutes); f.country = f.country ? f.country.toUpperCase() : null; f.outlet_kind = f.kind === "youtube_channel" ? "TV / video" : (f.kind === "instagram_search" ? "Social" : "News site");
+    await api("/api/admin/sources", { method: "POST", body: JSON.stringify(f) }); e.target.reset(); loadAll(); };
+  $("ingesturl").onsubmit = async (e) => {
+    e.preventDefault();
+    const url = new FormData(e.target).get("url");
+    $("ingestres").textContent = "Fetching and extracting Instagram post metadata…";
+    try {
+      const res = await api("/api/admin/ingest-url", { method: "POST", body: JSON.stringify({ url }) });
+      $("ingestres").innerHTML = `<span style="color:#16A34A">✓ Ingested: <strong>${esc(res.title)}</strong> (${esc(res.outlet)})</span>`;
+      e.target.reset();
+      loadAll();
+    } catch (err) {
+      $("ingestres").innerHTML = `<span style="color:#DC2626">✗ Ingest failed: ${esc(err.message)}</span>`;
+    }
+  };
+  if ($("wiki-form")) {
+    $("wiki-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const oid = $("fact-outlet").value;
+      const qid = $("wiki-qid").value.trim() || null;
+      $("wiki-msg").textContent = "Syncing with Wikidata…";
+      try {
+        const res = await api(`/api/admin/channels/${oid}/wikidata`, { method: "POST", body: JSON.stringify({ qid }) });
+        $("wiki-msg").innerHTML = `<span style="color:#16A34A">✓ Synced: QID ${esc(res.qid || "none")} · Founded ${esc(res.founded || "n/a")} · Owner ${esc(res.owner || "n/a")}</span>`;
+      } catch (err) {
+        $("wiki-msg").innerHTML = `<span style="color:#DC2626">✗ Sync error: ${esc(err.message)}</span>`;
+      }
+    };
+  }
+  if ($("fact-form")) {
+    $("fact-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const oid = $("fact-outlet").value;
+      const cat = $("fact-cat").value;
+      const fact = $("fact-desc").value.trim();
+      const source_url = $("fact-url").value.trim();
+      const as_of_date = $("fact-date").value.trim();
+      $("fact-msg").textContent = "Saving manual fact…";
+      try {
+        await api(`/api/admin/channels/${oid}/manual-facts`, {
+          method: "POST",
+          body: JSON.stringify({ category: cat, fact, source_url, as_of_date })
+        });
+        $("fact-msg").innerHTML = `<span style="color:#16A34A">✓ Added manual fact for ${esc(cat)}</span>`;
+        $("fact-desc").value = "";
+      } catch (err) {
+        $("fact-msg").innerHTML = `<span style="color:#DC2626">✗ Failed: ${esc(err.message)}</span>`;
+      }
+    };
+  }
+  document.addEventListener("change", async (e) => { const d = e.target.dataset;
+    if (d.srctoggle) await api("/api/admin/sources/" + d.srctoggle, { method: "PATCH", body: JSON.stringify({ enabled: e.target.checked }) });
+    if (d.interval) await api("/api/admin/sources/" + d.interval, { method: "PATCH", body: JSON.stringify({ interval_minutes: Number(e.target.value) }) });
+    if (d.subtoggle) await api("/api/admin/subjects/" + d.subtoggle, { method: "PATCH", body: JSON.stringify({ enabled: e.target.checked }) }); });
+  document.addEventListener("click", async (e) => { const d = e.target.dataset || {};
+    if (d.run) { await api(`/api/admin/sources/${d.run}/run`, { method: "POST" }); e.target.textContent = "Started"; setTimeout(loadAll, 8000); }
+    if (d.srcdel && confirm("Delete this source? Collected posts are kept.")) { await api("/api/admin/sources/" + d.srcdel, { method: "DELETE" }); loadAll(); }
+    if (d.subdel && confirm("Stop tracking this subject? Collected posts are kept.")) { await api("/api/admin/subjects/" + d.subdel, { method: "DELETE" }); loadAll(); } });
+  if (token) loadAll().catch(() => {});
+})();
+</script>
+</body>
+</html>
