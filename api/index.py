@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 
-for p in (str(BACKEND_DIR), str(ROOT_DIR)):
+for p in (str(BACKEND_DIR), str(ROOT_DIR), str(Path.cwd() / "backend"), str(Path.cwd())):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -20,12 +20,14 @@ if os.environ.get("VERCEL"):
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
 
         # Copy bundled database to /tmp if available and not yet present in /tmp
-        bundled_db = BACKEND_DIR / "betwatch.db"
-        if bundled_db.exists() and not os.path.exists(tmp_db):
-            try:
-                shutil.copyfile(bundled_db, tmp_db)
-            except Exception as e:
-                print(f"Warning: could not copy bundled db: {e}")
+        if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) == 0:
+            for candidate in (BACKEND_DIR / "betwatch.db", Path.cwd() / "backend" / "betwatch.db", ROOT_DIR / "betwatch.db"):
+                if candidate.exists():
+                    try:
+                        shutil.copyfile(candidate, tmp_db)
+                        break
+                    except Exception as e:
+                        print(f"Warning: could not copy bundled db: {e}")
 
     # Serverless functions cannot run continuous background scheduler threads
     os.environ["EMBEDDED_WORKER"] = "false"

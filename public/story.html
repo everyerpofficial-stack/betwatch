@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story details · BetWatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+.story-header{background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);padding:24px 0}
+.story-header-in{display:flex;flex-direction:column;gap:12px}
+.back-link{display:inline-flex;align-items:center;gap:6px;font:600 13px var(--font-sans);color:var(--text-muted);text-decoration:none}
+.back-link:hover{color:var(--text-main)}
+.story-title{font-size:24px;font-weight:700;line-height:1.3;margin:4px 0 8px;color:var(--text-main)}
+.story-meta-bar{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;font-size:13px;color:var(--text-muted)}
+.story-meta-item{display:inline-flex;align-items:center;gap:6px}
+.summary-box{background:var(--bg-pop);color:#F9FAFB;border-radius:14px;padding:22px 26px;margin:20px 0;border:1px solid rgba(255,255,255,0.08)}
+.summary-box h3{color:var(--accent-amber);font-size:12px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.summary-text{font-size:15px;line-height:1.65;color:#E5E7EB;margin:0}
+.highlights-list{margin:12px 0 0;padding-left:20px;color:#D1D5DB;font-size:14px;line-height:1.6}
+.channels-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0}
+.posts-card{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:14px;overflow:hidden;margin-top:16px}
+.posts-card-header{padding:16px 20px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--border-subtle)}
+.posts-table{width:100%;border-collapse:collapse;font-size:14px;text-align:left}
+.posts-table th{background:var(--bg-subtle);color:var(--text-muted);font:600 11px/1 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:12px 16px;border-bottom:1px solid var(--border-subtle)}
+.posts-table td{padding:14px 16px;border-bottom:1px solid var(--border-subtle);vertical-align:middle;color:var(--text-main)}
+.posts-table tr:hover td{background:var(--bg-subtle)}
+.story-tab{min-height:38px;padding:0 12px;border:0;background:transparent;color:var(--text-muted);font:600 13px var(--font-sans);cursor:pointer;border-bottom:2px solid transparent}
+.story-tab.on{color:var(--text-main);border-bottom-color:var(--accent-orange)}
+.story-tab .ct{font-size:11px;padding:2px 6px;border-radius:999px;background:var(--bg-subtle);margin-left:4px;color:var(--text-main)}
+.open-link-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;background:var(--tone-neg-bg);color:var(--tone-neg-text);font:600 12px var(--font-sans);text-decoration:none}
+.open-link-btn:hover{background:var(--accent-amber-hover);color:var(--text-main)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <a href="/" style="display:flex;align-items:center;gap:14px;text-decoration:none;color:inherit">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" stroke="#FDBA74" stroke-width="2"></rect><path d="M9 22l5-6 4 4 7-9" stroke="#FDBA74" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <div>
+          <div class="brand-name">BetWatch</div>
+          <div class="brand-sub">Story intelligence view</div>
+        </div>
+      </a>
+    </div>
+    <div class="top-right">
+      <button type="button" class="btn-theme" id="theme-toggle" title="Toggle Light / Dark theme" aria-label="Toggle theme">
+        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+        <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+      <a class="btn-amber" href="/">Back to Dashboard</a>
+      <a class="btn-amber" style="background:#374151;color:#F9FAFB" href="/admin">Admin</a>
+    </div>
+  </div>
+</header>
+
+<div id="content" class="wrap" style="padding-top:20px;padding-bottom:50px">
+  <div class="ph" style="margin-top:20px">Loading story details…</div>
+</div>
+
+</div>
+
+<script>
+  function initTheme() {
+    const saved = localStorage.getItem("bw-theme");
+    const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme = saved || (prefersDark ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+    const btn = document.getElementById("theme-toggle");
+    if (btn) {
+      btn.onclick = () => {
+        const current = document.documentElement.getAttribute("data-theme") || "light";
+        const next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("bw-theme", next);
+      };
+    }
+  }
+  initTheme();
+
+(async function() {
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? esc(u) : "#");
+  const toneCls = (t) => "tone " + esc(t);
+
+  const pathParts = window.location.pathname.split("/").filter(Boolean);
+  const storyId = pathParts[pathParts.length - 1];
+
+  if (!storyId || isNaN(storyId)) {
+    document.getElementById("content").innerHTML = `<div class="ph empty">Invalid story ID. <a href="/">Return to dashboard</a></div>`;
+    return;
+  }
+
+  let data = null;
+  let activeTab = "all";
+  let searchFilter = "";
+
+  try {
+    const res = await fetch("/api/stories/" + storyId);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+    document.title = `${data.title} · Story · BetWatch`;
+    render();
+  } catch (err) {
+    document.getElementById("content").innerHTML = `<div class="ph empty">Could not load story: ${esc(err.message)}. <a href="/">Return to dashboard</a></div>`;
+  }
+
+  function render() {
+    const d = data;
+    const srcLabels = { ai: "AI SUMMARY", publisher: "PUBLISHER EXCERPT", none: "NO SUMMARY" };
+    const srcBadge = srcLabels[d.summary_source] || "SUMMARY";
+
+    const filteredPosts = d.posts.filter((p) => {
+      if (activeTab === "web" && p.kind !== "article") return false;
+      if (activeTab === "video" && p.kind !== "video") return false;
+      if (activeTab === "social" && p.kind !== "social") return false;
+      if (searchFilter) {
+        const hay = [p.title, p.outlet, p.author, p.tone].join(" ").toLowerCase();
+        if (!hay.includes(searchFilter.toLowerCase())) return false;
+      }
+      return true;
+    });
+
+    const webCount = d.posts.filter((p) => p.kind === "article").length;
+    const videoCount = d.posts.filter((p) => p.kind === "video").length;
+    const socialCount = d.posts.filter((p) => p.kind === "social").length;
+
+    const channelsHtml = d.channels.map((c) =>
+      `<a href="/channel/${c.id}" target="_blank" rel="noopener" class="chip${c.is_first ? " on" : ""}" title="View profile for ${esc(c.name)}">${c.is_first ? `<span class="first" style="margin-right:4px">1ST</span>` : ""}<span>${esc(c.name)}</span><span class="ct">${esc(c.kind)}</span></a>`
+    ).join("");
+
+    const rowsHtml = filteredPosts.map((p) => `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${p.is_first ? `<span class="first">1ST</span>` : ""}
+            <a href="/channel/${p.outlet_id}" target="_blank" rel="noopener" style="font-weight:600;color:var(--text-main);text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${esc(p.outlet)}</a>
+            <span class="tag small" style="font-size:10px">${esc(p.outlet_kind || p.kind)}</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-main);margin-top:4px;font-weight:500">${esc(p.title)}</div>
+        </td>
+        <td style="white-space:nowrap;color:var(--text-muted)">${esc(p.author)}</td>
+        <td class="mono" style="white-space:nowrap;font-size:13px;color:var(--text-muted)">${esc(p.published_at_fmt)}</td>
+        <td><span class="${toneCls(p.tone)}">${esc(p.tone)}</span></td>
+        <td style="text-align:right">
+          <a href="${safeUrl(p.url)}" target="_blank" rel="noopener noreferrer" class="open-link-btn">Open post ↗</a>
+        </td>
+      </tr>
+    `).join("");
+
+    document.getElementById("content").innerHTML = `
+      <div style="margin-top:16px">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+      </div>
+
+      <div class="story-header" style="background:transparent;border:0;padding:16px 0 0">
+        <div class="tags" style="margin-bottom:8px">
+          ${d.categories.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}
+          <span class="${toneCls(d.tone)}">${esc(d.tone)}</span>
+          <span class="tag">${d.post_count} posts</span>
+          <span class="tag">${d.channel_count} channels</span>
+        </div>
+        <h1 class="story-title">${esc(d.title)}</h1>
+        <div class="story-meta-bar">
+          <div class="story-meta-item">First reported: <strong style="color:#9A3412">${esc(d.first_name)}</strong></div>
+          <div class="story-meta-item">First seen: <span class="mono">${esc(d.first_seen_fmt)}</span></div>
+          <div class="story-meta-item">Latest update: <span class="mono">${esc(d.last_seen_fmt)}</span> (Asia/Kolkata)</div>
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <h3>Summary <span class="srcnote" style="background:#374151;color:#FDBA74;padding:3px 8px;border-radius:4px">${srcBadge}</span></h3>
+        <p class="summary-text">${esc(d.summary)}</p>
+        ${d.highlights && d.highlights.length ? `<div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:#FDBA74;margin-top:14px;letter-spacing:.06em">WHAT OUTLETS HIGHLIGHTED</div><ul class="highlights-list">${d.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+      </div>
+
+      <div>
+        <div class="lbl" style="margin-bottom:6px">Channels in this story (${d.channels.length}) — click to view profile</div>
+        <div class="channels-row">${channelsHtml}</div>
+      </div>
+
+      <div class="posts-card">
+        <div class="posts-card-header">
+          <div style="display:flex;gap:8px;overflow-x:auto">
+            <button type="button" class="story-tab${activeTab === "all" ? " on" : ""}" data-tab="all">All posts <span class="ct">${d.posts.length}</span></button>
+            <button type="button" class="story-tab${activeTab === "web" ? " on" : ""}" data-tab="web">Websites <span class="ct">${webCount}</span></button>
+            <button type="button" class="story-tab${activeTab === "video" ? " on" : ""}" data-tab="video">YouTube &amp; video <span class="ct">${videoCount}</span></button>
+            <button type="button" class="story-tab${activeTab === "social" ? " on" : ""}" data-tab="social">Social media <span class="ct">${socialCount}</span></button>
+          </div>
+          <div>
+            <input type="search" id="post-search" placeholder="Filter posts in story…" value="${esc(searchFilter)}" style="padding:6px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;min-width:200px">
+          </div>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table class="posts-table">
+            <thead>
+              <tr>
+                <th>Channel &amp; Headline</th>
+                <th>Journalist</th>
+                <th>Published Time</th>
+                <th>Tone</th>
+                <th style="text-align:right">Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || `<tr><td colspan="5" class="empty muted">No posts match the current filter.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Bind tabs
+    document.querySelectorAll(".story-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeTab = btn.dataset.tab;
+        render();
+      });
+    });
+
+    const searchInput = document.getElementById("post-search");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        searchFilter = e.target.value.trim();
+        render();
+        const freshInput = document.getElementById("post-search");
+        if (freshInput) {
+          freshInput.focus();
+          freshInput.setSelectionRange(searchFilter.length, searchFilter.length);
+        }
+      });
+    }
+  }
+})();
+</script>
+</body>
+</html>

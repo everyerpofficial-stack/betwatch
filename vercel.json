@@ -1,12 +1,16 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "backend/**"
+    }
+  },
   "rewrites": [
-    { "source": "/static/(.*)", "destination": "/frontend/$1" },
-    { "source": "/admin", "destination": "/frontend/admin.html" },
-    { "source": "/channel/(.*)", "destination": "/frontend/channel.html" },
-    { "source": "/story/(.*)", "destination": "/frontend/story.html" },
-    { "source": "/", "destination": "/frontend/index.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/channel/(.*)", "destination": "/channel.html" },
+    { "source": "/story/(.*)", "destination": "/story.html" },
     { "source": "/api/(.*)", "destination": "/api/index.py" },
-    { "source": "/(.*)", "destination": "/api/index.py" }
+    { "source": "/docs", "destination": "/api/index.py" },
+    { "source": "/openapi.json", "destination": "/api/index.py" }
   ]
 }
