@@ -34,7 +34,17 @@ if os.environ.get("VERCEL"):
                     except Exception as e:
                         print(f"Warning: could not copy bundled db: {e}")
 
-    # Serverless functions cannot run continuous background scheduler threads
-    os.environ["EMBEDDED_WORKER"] = "false"
-
 from app.main import app
+
+
+@app.get("/api/debug-env", include_in_schema=False)
+def debug_env():
+    import os
+    res = {
+        "cwd": os.getcwd(),
+        "cwd_list": os.listdir(".") if os.path.exists(".") else [],
+        "var_task": os.listdir("/var/task") if os.path.exists("/var/task") else [],
+        "tmp_db_size": os.path.getsize("/tmp/betwatch.db") if os.path.exists("/tmp/betwatch.db") else 0,
+        "routes": [getattr(r, "path", str(r)) for r in app.routes],
+    }
+    return res
