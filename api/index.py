@@ -20,15 +20,15 @@ if os.environ.get("VERCEL"):
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
 
         # Copy bundled database to /tmp if available and not yet present in /tmp
-        if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) == 0:
-            for candidate in (
-                BACKEND_DIR / "app" / "betwatch.db",
-                BACKEND_DIR / "betwatch.db",
-                ROOT_DIR / "backend" / "app" / "betwatch.db",
-                Path("/var/task/backend/app/betwatch.db"),
-                Path("/var/task/backend/betwatch.db"),
-            ):
-                if candidate.exists() and candidate.is_file():
+        for candidate in (
+            BACKEND_DIR / "app" / "betwatch.db",
+            BACKEND_DIR / "betwatch.db",
+            ROOT_DIR / "backend" / "app" / "betwatch.db",
+            Path("/var/task/backend/app/betwatch.db"),
+            Path("/var/task/backend/betwatch.db"),
+        ):
+            if candidate.exists() and candidate.is_file():
+                if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < candidate.stat().st_size:
                     try:
                         shutil.copyfile(candidate, tmp_db)
                         break

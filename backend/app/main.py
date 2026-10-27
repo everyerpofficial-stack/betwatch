@@ -13,13 +13,14 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .config import get_settings
+from .frontend_assets import ADMIN_HTML, APP_JS, CHANNEL_HTML, INDEX_HTML, STORY_HTML, STYLES_CSS
 from .db import Base, SessionLocal, engine, get_db
 from .ingest.adapters import ADAPTERS, PER_SUBJECT_KINDS, parse_instagram_post
 from .ingest.collector import run_source
@@ -732,31 +733,59 @@ def export_channel_pdf(outlet_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {e}")
 
 
-if FRONTEND and FRONTEND.exists():
-    _static_dir = FRONTEND / "static" if (FRONTEND / "static").exists() else FRONTEND
-    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
-
-    @app.get("/", include_in_schema=False)
-    @app.get("/api/index.py", include_in_schema=False)
-    def index():
+# ---------------------------------------------------------------- frontend routes
+@app.get("/", include_in_schema=False)
+@app.get("/api/index.py", include_in_schema=False)
+def index():
+    if INDEX_HTML:
+        return HTMLResponse(content=INDEX_HTML, media_type="text/html")
+    if FRONTEND and (FRONTEND / "index.html").exists():
         return FileResponse(FRONTEND / "index.html")
+    return HTMLResponse("<h1>BetWatch</h1><p>Dashboard loading...</p>")
 
-    @app.get("/styles.css", include_in_schema=False)
-    def styles_asset():
-        return FileResponse(FRONTEND / "styles.css")
 
-    @app.get("/app.js", include_in_schema=False)
-    def app_js_asset():
-        return FileResponse(FRONTEND / "app.js")
-
-    @app.get("/admin", include_in_schema=False)
-    def admin_page():
+@app.get("/admin", include_in_schema=False)
+def admin_page():
+    if ADMIN_HTML:
+        return HTMLResponse(content=ADMIN_HTML, media_type="text/html")
+    if FRONTEND and (FRONTEND / "admin.html").exists():
         return FileResponse(FRONTEND / "admin.html")
+    return HTMLResponse("<h1>BetWatch Admin</h1>")
 
-    @app.get("/story/{story_id}", include_in_schema=False)
-    def story_page(story_id: int):
+
+@app.get("/story/{story_id}", include_in_schema=False)
+def story_page(story_id: int):
+    if STORY_HTML:
+        return HTMLResponse(content=STORY_HTML, media_type="text/html")
+    if FRONTEND and (FRONTEND / "story.html").exists():
         return FileResponse(FRONTEND / "story.html")
+    return HTMLResponse("<h1>BetWatch Story</h1>")
 
-    @app.get("/channel/{outlet_id}", include_in_schema=False)
-    def channel_page(outlet_id: int):
+
+@app.get("/channel/{outlet_id}", include_in_schema=False)
+def channel_page(outlet_id: int):
+    if CHANNEL_HTML:
+        return HTMLResponse(content=CHANNEL_HTML, media_type="text/html")
+    if FRONTEND and (FRONTEND / "channel.html").exists():
         return FileResponse(FRONTEND / "channel.html")
+    return HTMLResponse("<h1>BetWatch Channel Profile</h1>")
+
+
+@app.get("/static/styles.css", include_in_schema=False)
+@app.get("/styles.css", include_in_schema=False)
+def styles_asset():
+    if STYLES_CSS:
+        return Response(content=STYLES_CSS, media_type="text/css")
+    if FRONTEND and (FRONTEND / "styles.css").exists():
+        return FileResponse(FRONTEND / "styles.css")
+    return Response(content="", media_type="text/css")
+
+
+@app.get("/static/app.js", include_in_schema=False)
+@app.get("/app.js", include_in_schema=False)
+def app_js_asset():
+    if APP_JS:
+        return Response(content=APP_JS, media_type="application/javascript")
+    if FRONTEND and (FRONTEND / "app.js").exists():
+        return FileResponse(FRONTEND / "app.js")
+    return Response(content="", media_type="application/javascript")
