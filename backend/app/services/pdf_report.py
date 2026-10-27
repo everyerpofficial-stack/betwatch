@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 import xml.sax.saxutils as saxutils
@@ -23,56 +24,91 @@ from reportlab.platypus import (
     HRFlowable,
     KeepTogether,
     PageBreak,
-    Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
+from reportlab.platypus import Paragraph as _Paragraph
 from sqlalchemy.orm import Session
 
 from app.services.channel_profile import build_channel_profile_data
 from app.services.dashboard import Filters, build_dashboard
 
 # ---------------------------------------------------------------- Font setup
+# Latin text uses a system TTF (or built-in Helvetica). The bundled Noto Sans
+# Devanagari has no Latin letters, so it is only applied to Devanagari runs.
 _FONT_REGULAR = "Helvetica"
 _FONT_BOLD = "Helvetica-Bold"
 
-# Register Unicode & Hindi/Devanagari TrueType font
+for _path, _bpath in [
+    ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+]:
+    if os.path.exists(_path):
+        try:
+            pdfmetrics.registerFont(TTFont("CustomSans", _path))
+            _FONT_REGULAR = "CustomSans"
+            if os.path.exists(_bpath):
+                pdfmetrics.registerFont(TTFont("CustomSans-Bold", _bpath))
+                _FONT_BOLD = "CustomSans-Bold"
+            else:
+                _FONT_BOLD = "CustomSans"
+            # Lets <b> inside regular paragraphs resolve to the bold face
+            pdfmetrics.registerFontFamily("CustomSans", normal=_FONT_REGULAR, bold=_FONT_BOLD)
+            break
+        except Exception:
+            pass
+
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _FONT_DIR = os.path.join(_APP_DIR, "fonts")
 _DEVA_REG = os.path.join(_FONT_DIR, "NotoSansDevanagari-Regular.ttf")
 _DEVA_BOLD = os.path.join(_FONT_DIR, "NotoSansDevanagari-Bold.ttf")
 
+_DEVA_FONT: Optional[str] = None
+_DEVA_FONT_BOLD: Optional[str] = None
 if os.path.exists(_DEVA_REG):
     try:
         pdfmetrics.registerFont(TTFont("NotoDeva", _DEVA_REG))
-        _FONT_REGULAR = "NotoDeva"
+        _DEVA_FONT = _DEVA_FONT_BOLD = "NotoDeva"
         if os.path.exists(_DEVA_BOLD):
             pdfmetrics.registerFont(TTFont("NotoDeva-Bold", _DEVA_BOLD))
-            _FONT_BOLD = "NotoDeva-Bold"
-        else:
-            _FONT_BOLD = "NotoDeva"
+            _DEVA_FONT_BOLD = "NotoDeva-Bold"
     except Exception:
         pass
 
-if _FONT_REGULAR == "Helvetica":
-    for _path, _bpath in [
-        ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ]:
-        if os.path.exists(_path):
-            try:
-                pdfmetrics.registerFont(TTFont("CustomSans", _path))
-                _FONT_REGULAR = "CustomSans"
-                if os.path.exists(_bpath):
-                    pdfmetrics.registerFont(TTFont("CustomSans-Bold", _bpath))
-                    _FONT_BOLD = "CustomSans-Bold"
-                else:
-                    _FONT_BOLD = "CustomSans"
-                break
-            except Exception:
-                pass
+_DEVA_RUN = re.compile(r"[\u0900-\u097F\u1CD0-\u1CFF\uA8E0-\uA8FF\u200C\u200D]+")
+_MARKUP_TAG = re.compile(r"(<[^>]*>)")
+_BOLD_TAG = re.compile(r"<(/?)(?:b|strong)\s*>", re.IGNORECASE)
+_MATH_ALNUM = re.compile(r"[\U0001D400-\U0001D7FF]")
+
+
+def _with_script_fonts(markup: str, style: Optional[ParagraphStyle]) -> str:
+    """Wrap Devanagari runs in a <font> tag for the Devanagari face, keeping bold state."""
+    if not _DEVA_FONT or not _DEVA_RUN.search(markup):
+        return markup
+    bold_depth = 1 if style is not None and style.fontName == _FONT_BOLD else 0
+    out = []
+    for part in _MARKUP_TAG.split(markup):
+        if part.startswith("<"):
+            m = _BOLD_TAG.fullmatch(part)
+            if m:
+                bold_depth += -1 if m.group(1) else 1
+        elif part:
+            face = _DEVA_FONT_BOLD if bold_depth > 0 else _DEVA_FONT
+            part = _DEVA_RUN.sub(lambda r: f'<font face="{face}">{r.group(0)}</font>', part)
+        out.append(part)
+    return "".join(out)
+
+
+class Paragraph(_Paragraph):
+    """Paragraph that renders Devanagari text with the bundled Devanagari font."""
+
+    def __init__(self, text, style=None, *args, **kwargs):
+        # Paragraph.split() re-instantiates with text=None and pre-built frags
+        if isinstance(text, str):
+            text = _with_script_fonts(text, style)
+        super().__init__(text, style, *args, **kwargs)
 
 
 def clean(text: Any) -> str:
@@ -81,6 +117,8 @@ def clean(text: Any) -> str:
         return ""
     s = str(text)
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+    # "Fancy" math-alphabet letters (common in YouTube titles) have no glyphs in our fonts
+    s = _MATH_ALNUM.sub(lambda m: unicodedata.normalize("NFKC", m.group(0)), s)
     return saxutils.escape(s.strip())
 
 
@@ -280,7 +318,6 @@ def generate_subject_pdf(db: Session, f: Filters) -> bytes:
     dash = build_dashboard(db, dash_filter)
     kpis = dash.get("k", {})
     stories = dash.get("stories", [])
-    rank_betting = dash.get("rank_betting", [])
     channels = dash.get("channels", [])
 
     now_str = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
@@ -339,8 +376,8 @@ def generate_subject_pdf(db: Session, f: Filters) -> bytes:
     story.append(t_kpis)
     story.append(Spacer(1, 14))
 
-    # 3. Top Outlets Table
-    top_channels = rank_betting or channels
+    # 3. Top Outlets Table (channels are pre-sorted by posts matching the report filters)
+    top_channels = [ch for ch in channels if ch.get("n", 0) > 0]
     if top_channels:
         story.append(Paragraph("Key Monitored Channels & Volume", styles["SectionHeading"]))
         ch_rows = [
@@ -350,9 +387,9 @@ def generate_subject_pdf(db: Session, f: Filters) -> bytes:
                 Paragraph("Share of Monitored Posts", styles["TableCellBold"]),
             ]
         ]
-        total_p = max(kpis.get("posts", 1), 1)
+        total_p = max(sum(ch["n"] for ch in top_channels), 1)
         for ch in top_channels[:10]:
-            c_cnt = ch.get("count", 0)
+            c_cnt = ch["n"]
             pct = round((c_cnt / total_p) * 100, 1)
             ch_rows.append(
                 [
@@ -420,7 +457,9 @@ def generate_subject_pdf(db: Session, f: Filters) -> bytes:
                 p_outlet = clean(p.get("o", "Unknown"))
                 p_head = clean(p.get("h", ""))
                 p_time = clean(p.get("published_at", ""))
-                bullet = f"• <b>{p_outlet}</b>: {p_head} <font color='#64748b'>({p_time})</font>"
+                bullet = f"• <b>{p_outlet}</b>: {p_head}"
+                if p_time:
+                    bullet += f" <font color='#64748b'>({p_time})</font>"
                 post_items.append(Paragraph(bullet, styles["TableCell"]))
 
             t_cluster = Table(cluster_box, colWidths=[460, 80])
