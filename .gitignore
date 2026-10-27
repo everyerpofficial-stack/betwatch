@@ -1,0 +1,16 @@
+.env
+*.env
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+.DS_Store
+Thumbs.db

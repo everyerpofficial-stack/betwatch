@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "Q468087": {
+      "id": "Q468087",
+      "labels": {
+        "en": {
+          "language": "en",
+          "value": "The Times of India"
+        }
+      },
+      "descriptions": {
+        "en": {
+          "language": "en",
+          "value": "Indian English-language daily newspaper"
+        }
+      },
+      "claims": {
+        "P571": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P571",
+              "datavalue": {
+                "value": {
+                  "time": "+1838-11-03T00:00:00Z",
+                  "timezone": 0,
+                  "before": 0,
+                  "after": 0,
+                  "precision": 11,
+                  "calendarmodel": "http://www.wikidata.org/entity/Q1985727"
+                },
+                "type": "time"
+              }
+            }
+          }
+        ],
+        "P127": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P127",
+              "datavalue": {
+                "value": {
+                  "id": "Q817887",
+                  "label": "The Times Group"
+                },
+                "type": "wikibase-entityid"
+              }
+            }
+          }
+        ],
+        "P159": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P159",
+              "datavalue": {
+                "value": {
+                  "id": "Q1156",
+                  "label": "Mumbai, Maharashtra, India"
+                },
+                "type": "wikibase-entityid"
+              }
+            }
+          }
+        ],
+        "P856": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P856",
+              "datavalue": {
+                "value": "https://timesofindia.indiatimes.com/",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P414": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P414",
+              "datavalue": {
+                "value": {
+                  "id": "Q171483",
+                  "label": "Bombay Stock Exchange"
+                },
+                "type": "wikibase-entityid"
+              }
+            },
+            "qualifiers": {
+              "P249": [
+                {
+                  "snaktype": "value",
+                  "property": "P249",
+                  "datavalue": {
+                    "value": "500000",
+                    "type": "string"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "P2002": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P2002",
+              "datavalue": {
+                "value": "timesofindia",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P2003": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P2003",
+              "datavalue": {
+                "value": "timesofindia",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P2013": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P2013",
+              "datavalue": {
+                "value": "TimesofIndia",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P2397": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P2397",
+              "datavalue": {
+                "value": "UCt4t-jeY85JegMlZ-E5UWtA",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P4264": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P4264",
+              "datavalue": {
+                "value": "the-times-of-india",
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "P3789": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P3789",
+              "datavalue": {
+                "value": "timesofindia_official",
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

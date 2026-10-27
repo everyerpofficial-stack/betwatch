@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TEST FIXTURE: invented headlines for parser tests. Not real news. -->
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+  <title>Fixture Times</title>
+  <link>https://www.fixturetimes.example/</link>
+  <item>
+    <title>TEST: Police raid illegal betting racket during cricket final</title>
+    <link>https://www.fixturetimes.example/india/raid-betting-racket?utm_source=rss</link>
+    <description><![CDATA[<p>TEST FIXTURE. Officers arrested five people running an illegal betting app.</p>]]></description>
+    <dc:creator>Test Reporter</dc:creator>
+    <pubDate>Sat, 24 Oct 2026 08:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>TEST: Monsoon tracker LIVE: heavy rain expected</title>
+    <link>https://www.fixturetimes.example/weather/monsoon-live</link>
+    <description>TEST FIXTURE weather item.</description>
+    <pubDate>Sat, 24 Oct 2026 09:00:00 GMT</pubDate>
+  </item>
+</channel>
+</rss>

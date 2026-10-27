@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TEST FIXTURE: shaped like a Google News search feed. Invented headlines. Not real news. -->
+<rss version="2.0">
+<channel>
+  <title>"Testapp betting" - Google News</title>
+  <item>
+    <title>TEST: Testapp betting promoters arrested in Dubai - The Times of India</title>
+    <link>https://news.google.com/rss/articles/TESTFIXTURE1</link>
+    <pubDate>Fri, 23 Oct 2026 07:00:00 GMT</pubDate>
+    <source url="https://timesofindia.indiatimes.com">The Times of India</source>
+  </item>
+  <item>
+    <title>TEST: Testapp betting promoters held in Dubai, says agency - The Hindu</title>
+    <link>https://news.google.com/rss/articles/TESTFIXTURE2</link>
+    <pubDate>Fri, 23 Oct 2026 09:30:00 GMT</pubDate>
+    <source url="https://www.thehindu.com">The Hindu</source>
+  </item>
+  <item>
+    <title>TEST: Bangladesh passes new gambling law - Dhaka Tribune</title>
+    <link>https://news.google.com/rss/articles/TESTFIXTURE3</link>
+    <pubDate>Thu, 22 Oct 2026 10:00:00 GMT</pubDate>
+    <source url="https://www.dhakatribune.com">Dhaka Tribune</source>
+  </item>
+</channel>
+</rss>

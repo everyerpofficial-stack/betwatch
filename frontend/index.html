@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BetWatch dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="app">
+
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" stroke="#FDBA74" stroke-width="2"></rect><path d="M9 22l5-6 4 4 7-9" stroke="#FDBA74" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <div>
+        <div class="brand-name">BetWatch</div>
+        <div class="brand-sub">News, video &amp; social intelligence for betting, gaming and regulation</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <span class="badge" id="totals">LOADING…</span>
+      <span class="asof" id="freshness"></span>
+      <button type="button" class="btn-theme" id="theme-toggle" title="Toggle Light / Dark theme" aria-label="Toggle theme">
+        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+        <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+      <a class="btn-amber" href="/admin">Admin</a>
+    </div>
+  </div>
+</header>
+
+<div class="newbar" id="newbar" hidden>
+  <div class="wrap"><button type="button" id="newbtn"></button></div>
+</div>
+
+<section aria-label="Filters" class="filters">
+  <div class="wrap filters-in">
+    <div class="frow">
+      <label for="subject" class="lbl" style="width:100%">Subject — person, company, app or law</label>
+      <div style="display:flex;gap:10px;align-items:center;width:100%;max-width:680px">
+        <div class="search" style="flex:1">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <input id="subject" class="q" type="search" placeholder="e.g. Mahadev, Online Gaming Act, Shefali Bagga" autocomplete="off">
+        </div>
+        <button type="button" class="btn-amber" id="save-keyword" style="min-height:44px;line-height:44px;white-space:nowrap;padding:0 16px;font-size:13px" title="Track this subject and collect all search sources now">+ Save keyword</button>
+      </div>
+      <div class="sugg-row" id="suggestions"><span class="muted">Try:</span></div>
+    </div>
+    <div class="frow end">
+      <div class="fgroup"><span class="lbl">Category</span><div class="chips" id="cats"></div></div>
+      <div class="fgroup"><span class="lbl">Timeframe</span><div class="segbox" id="times"></div></div>
+      <div class="fgroup"><span class="lbl">Coverage</span><div class="segbox" id="scopes"></div></div>
+    </div>
+    <div class="frow end">
+      <div class="fgroup grow"><label for="ch" class="lbl">News channel</label><select id="ch" class="sel"></select></div>
+      <div class="fgroup grow"><label for="jr" class="lbl">Journalist / byline</label><select id="jr" class="sel"></select></div>
+      <div class="fgroup"><span class="lbl">Tone toward betting</span><div class="segbox" id="tones"></div></div>
+      <button type="button" class="peek" id="clear" hidden>Clear filters</button>
+      <button type="button" class="peek" id="save">Save search</button>
+      <button type="button" class="peek" id="export-pdf" title="Export PDF report for current filters">Export PDF</button>
+    </div>
+    <div class="frow chips-row" id="active-filter-chips" hidden>
+      <span class="lbl" style="margin-right:4px">Active filters:</span>
+      <div class="chips" id="active-chips-container"></div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap body">
+  <section aria-label="Insights" class="insights">
+    <div class="ins-head">
+      <h1 id="heading">Loading…</h1>
+      <span class="mono muted">Total coverage on this topic till now</span>
+    </div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <div class="cols">
+    <aside aria-label="Watchlists" class="side">
+      <div class="lbl" style="padding:4px 12px 10px">Saved keywords</div>
+      <div id="keywords-list"></div>
+      <div class="lbl" style="padding:18px 12px 10px">Watchlists</div>
+      <div id="presets"></div>
+      <div class="lbl" style="padding:18px 12px 10px">Saved searches</div>
+      <div id="saved"></div>
+    </aside>
+
+    <main class="main">
+      <div class="center">
+        <div role="tablist" aria-label="Views" class="tabs" id="tabs"></div>
+        <div id="view" aria-live="polite"></div>
+      </div>
+
+      <aside aria-label="Acquisition targets" class="rail">
+        <div><div class="lbl" style="color:#9A3412">Acquisition targets</div><div class="muted small" style="margin-top:6px" id="rail-sub"></div></div>
+        <section class="card stack"><h3 id="rank-mah-title">Most Mahadev betting posts</h3><ol class="rank" id="rank-mah"></ol></section>
+        <section class="card stack"><h3>Most betting news posts</h3><ol class="rank" id="rank-bet"></ol></section>
+      </aside>
+    </main>
+  </div>
+</div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
