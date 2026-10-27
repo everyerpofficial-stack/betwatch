@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 
-for p in (str(BACKEND_DIR), str(ROOT_DIR), str(Path.cwd() / "backend"), str(Path.cwd())):
+for p in (str(BACKEND_DIR), str(ROOT_DIR), str(Path.cwd() / "backend"), str(Path.cwd()), "/var/task/backend", "/var/task"):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -21,8 +21,13 @@ if os.environ.get("VERCEL"):
 
         # Copy bundled database to /tmp if available and not yet present in /tmp
         if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) == 0:
-            for candidate in (BACKEND_DIR / "betwatch.db", Path.cwd() / "backend" / "betwatch.db", ROOT_DIR / "betwatch.db"):
-                if candidate.exists():
+            for candidate in (
+                BACKEND_DIR / "betwatch.db",
+                Path.cwd() / "backend" / "betwatch.db",
+                ROOT_DIR / "betwatch.db",
+                Path("/var/task/backend/betwatch.db"),
+            ):
+                if candidate.exists() and candidate.is_file():
                     try:
                         shutil.copyfile(candidate, tmp_db)
                         break

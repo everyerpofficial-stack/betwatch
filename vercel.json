@@ -2,15 +2,10 @@
   "version": 2,
   "functions": {
     "api/index.py": {
-      "includeFiles": "backend/**"
+      "includeFiles": "{backend/**,frontend/**,public/**}"
     }
   },
   "rewrites": [
-    { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/channel/(.*)", "destination": "/channel.html" },
-    { "source": "/story/(.*)", "destination": "/story.html" },
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
-    { "source": "/docs", "destination": "/api/index.py" },
-    { "source": "/openapi.json", "destination": "/api/index.py" }
+    { "source": "/(.*)", "destination": "/api/index.py" }
   ]
 }

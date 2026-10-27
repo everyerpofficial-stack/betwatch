@@ -35,9 +35,22 @@ from .services.dashboard import Filters, build_dashboard, fmt, iso, meta, rankin
 from .services.pdf_report import generate_channel_pdf, generate_subject_pdf
 
 log = logging.getLogger("betwatch.api")
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-if not FRONTEND.exists():
-    FRONTEND = Path.cwd() / "frontend"
+FRONTEND = None
+for _cand in [
+    Path(__file__).resolve().parents[2] / "frontend",
+    Path(__file__).resolve().parents[2] / "public",
+    Path.cwd() / "frontend",
+    Path.cwd() / "public",
+    Path(__file__).resolve().parents[1] / "frontend",
+    Path(__file__).resolve().parents[1] / "public",
+    Path("/var/task/frontend"),
+    Path("/var/task/public"),
+]:
+    if _cand.exists() and (_cand / "index.html").exists():
+        FRONTEND = _cand
+        break
+if FRONTEND is None:
+    FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
 @asynccontextmanager
@@ -706,13 +719,21 @@ def export_channel_pdf(outlet_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {e}")
 
 
-# ---------------------------------------------------------------- frontend
-if FRONTEND.exists():
-    app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+if FRONTEND and FRONTEND.exists():
+    _static_dir = FRONTEND / "static" if (FRONTEND / "static").exists() else FRONTEND
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(FRONTEND / "index.html")
+
+    @app.get("/styles.css", include_in_schema=False)
+    def styles_asset():
+        return FileResponse(FRONTEND / "styles.css")
+
+    @app.get("/app.js", include_in_schema=False)
+    def app_js_asset():
+        return FileResponse(FRONTEND / "app.js")
 
     @app.get("/admin", include_in_schema=False)
     def admin_page():
