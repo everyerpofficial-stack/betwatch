@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,7 +9,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
-    database_url: str = "sqlite:///./betwatch.db"
+    database_url: str = "sqlite:////tmp/betwatch.db" if os.environ.get("VERCEL") else "sqlite:///./betwatch.db"
     admin_token: str = "change-me"
     home_country: str = "IN"  # outlets from this country count as "National"
     display_timezone: str = "Asia/Kolkata"

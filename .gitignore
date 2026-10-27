@@ -1,8 +1,9 @@
 .env
 *.env
-*.db
 *.db-wal
 *.db-shm
+*.db
+!backend/betwatch.db
 __pycache__/
 *.py[cod]
 *$py.class

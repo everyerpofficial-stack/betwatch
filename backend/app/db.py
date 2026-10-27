@@ -1,3 +1,4 @@
+import os
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
@@ -15,12 +16,18 @@ def _make_engine(url: str):
         eng = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})
 
         @event.listens_for(eng, "connect")
-        def _pragma(dbapi_conn, _):  # WAL so the worker and API can share the file
-            cur = dbapi_conn.cursor()
-            cur.execute("PRAGMA journal_mode=WAL")
-            cur.execute("PRAGMA busy_timeout=30000")
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.close()
+        def _pragma(dbapi_conn, _):
+            try:
+                cur = dbapi_conn.cursor()
+                if os.environ.get("VERCEL"):
+                    cur.execute("PRAGMA journal_mode=DELETE")
+                else:
+                    cur.execute("PRAGMA journal_mode=WAL")
+                cur.execute("PRAGMA busy_timeout=30000")
+                cur.execute("PRAGMA foreign_keys=ON")
+                cur.close()
+            except Exception:
+                pass
 
         return eng
     return create_engine(url, pool_size=10, max_overflow=20, pool_pre_ping=True)

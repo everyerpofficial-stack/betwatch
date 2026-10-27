@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/static/(.*)", "destination": "/frontend/$1" },
+    { "source": "/admin", "destination": "/frontend/admin.html" },
+    { "source": "/channel/(.*)", "destination": "/frontend/channel.html" },
+    { "source": "/story/(.*)", "destination": "/frontend/story.html" },
+    { "source": "/", "destination": "/frontend/index.html" },
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/(.*)", "destination": "/api/index.py" }
+  ]
+}

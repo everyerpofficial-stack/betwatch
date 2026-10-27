@@ -36,14 +36,24 @@ from .services.pdf_report import generate_channel_pdf, generate_subject_pdf
 
 log = logging.getLogger("betwatch.api")
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+if not FRONTEND.exists():
+    FRONTEND = Path.cwd() / "frontend"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if engine.url.get_backend_name() == "sqlite":
-        Base.metadata.create_all(engine)  # local dev convenience; PostgreSQL schema is managed by Alembic
+        try:
+            Base.metadata.create_all(engine)
+        except Exception as e:
+            log.warning("create_all failed: %s", e)
+        try:
+            from .seed import seed
+            seed(only_missing=True)
+        except Exception as e:
+            log.warning("seed failed: %s", e)
     sched = None
-    if get_settings().embedded_worker:
+    if get_settings().embedded_worker and not os.environ.get("VERCEL"):
         from .worker import start_background
         sched = start_background()
         log.info("embedded collector started")
