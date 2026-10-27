@@ -128,6 +128,27 @@ def health(db: Session = Depends(get_db)):
     return {"status": "ok", "time": iso(utcnow())}
 
 
+@app.get("/api/admin/db-status", include_in_schema=False)
+def db_status(db: Session = Depends(get_db)):
+    import os
+    tmp_db = "/tmp/betwatch.db"
+    candidates = [
+        Path(__file__).resolve().parent / "betwatch.db",
+        Path(__file__).resolve().parents[1] / "betwatch.db",
+        Path("/var/task/backend/app/betwatch.db"),
+        Path("/var/task/backend/betwatch.db"),
+    ]
+    cand_info = {str(c): (c.exists(), c.stat().st_size if c.exists() else 0) for c in candidates}
+    return {
+        "tmp_exists": os.path.exists(tmp_db),
+        "tmp_size": os.path.getsize(tmp_db) if os.path.exists(tmp_db) else 0,
+        "candidates": cand_info,
+        "articles": db.scalar(select(func.count()).select_from(Article)),
+        "sources": db.scalar(select(func.count()).select_from(Source)),
+        "clusters": db.scalar(select(func.count()).select_from(Cluster)),
+    }
+
+
 @app.get("/api/dashboard", summary="Everything the dashboard renders, for the given filters")
 def dashboard(f: Filters = Depends(filters), db: Session = Depends(get_db)):
     return build_dashboard(db, f)
