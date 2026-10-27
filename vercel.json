@@ -2,7 +2,11 @@
   "version": 2,
   "functions": {
     "api/index.py": {
-      "includeFiles": "{backend/**,frontend/**,public/**}"
+      "includeFiles": [
+        "backend/**",
+        "frontend/**",
+        "public/**"
+      ]
     }
   },
   "rewrites": [

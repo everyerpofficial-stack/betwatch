@@ -57,6 +57,25 @@ if FRONTEND is None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if engine.url.get_backend_name() == "sqlite":
+        if os.environ.get("VERCEL"):
+            tmp_db = "/tmp/betwatch.db"
+            candidates = [
+                Path(__file__).resolve().parent / "betwatch.db",
+                Path(__file__).resolve().parents[1] / "betwatch.db",
+                Path(__file__).resolve().parents[2] / "backend" / "app" / "betwatch.db",
+                Path("/var/task/backend/app/betwatch.db"),
+                Path("/var/task/backend/betwatch.db"),
+            ]
+            for cand in candidates:
+                if cand.exists() and cand.is_file() and cand.stat().st_size > 100000:
+                    if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < cand.stat().st_size:
+                        try:
+                            import shutil
+                            shutil.copyfile(cand, tmp_db)
+                            log.info("Copied seed db from %s (%d bytes)", cand, cand.stat().st_size)
+                            break
+                        except Exception as e:
+                            log.warning("Could not copy seed db: %s", e)
         try:
             Base.metadata.create_all(engine)
         except Exception as e:
