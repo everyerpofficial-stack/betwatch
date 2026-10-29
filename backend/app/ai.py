@@ -54,12 +54,20 @@ def _llm(arts: list[Article]) -> dict | None:
         r = httpx.post(
             "https://api.anthropic.com/v1/messages", timeout=60,
             headers={"x-api-key": s.anthropic_api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": s.anthropic_model, "max_tokens": 500,
-                  "messages": [{"role": "user", "content": PROMPT.format(posts=posts)}]},
+            json={
+                "model": s.anthropic_model,
+                "max_tokens": 1000,
+                "thinking": {"type": "disabled"},
+                "messages": [{"role": "user", "content": PROMPT.format(posts=posts)}],
+            },
         )
         r.raise_for_status()
-        text = "".join(b.get("text", "") for b in r.json().get("content", []))
-        data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+        text = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or start >= end:
+            return None
+        data = json.loads(text[start : end + 1])
         if not isinstance(data.get("summary"), str):
             return None
         return data

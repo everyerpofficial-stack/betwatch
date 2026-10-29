@@ -63,7 +63,8 @@ def _when(a: Article) -> datetime:
 def _matches_q(a: Article, q: str) -> bool:
     if not q:
         return True
-    hay = " ".join([a.title or "", a.description or "", a.author or "", a.outlet.name or ""] +
+    c_title = a.cluster.title if getattr(a, "cluster", None) else ""
+    hay = " ".join([a.title or "", a.description or "", a.author or "", a.outlet.name or "", c_title] +
                    [s.name for s in a.subjects] + [x for s in a.subjects for x in (s.aliases or [])])
     return contains_term(hay, q) or q.lower() in hay.lower()
 
@@ -136,8 +137,9 @@ def matching_posts(db: Session, f: Filters, outlet_id: int | None = None, ignore
         tagged = select(article_subjects.c.article_id).join(Subject, Subject.id == article_subjects.c.subject_id) \
             .where(or_(Subject.name.ilike(like), cast(Subject.aliases, String).ilike(like)))
         # SQL pre-filter is a superset; _matches_q below is the exact rule the feed uses.
-        stmt = stmt.where(or_(Article.title.ilike(like), Article.description.ilike(like), Article.author.ilike(like),
-                              Outlet.name.ilike(like), Article.id.in_(tagged)))
+        stmt = stmt.outerjoin(Cluster, Cluster.id == Article.cluster_id).where(
+            or_(Article.title.ilike(like), Article.description.ilike(like), Article.author.ilike(like),
+                Outlet.name.ilike(like), Cluster.title.ilike(like), Article.id.in_(tagged)))
     rows = list(db.scalars(stmt).all())
     if q:
         rows = [a for a in rows if _matches_q(a, q)]
@@ -173,14 +175,31 @@ def channel_detail_for(db: Session, f: Filters, outlet: Outlet | None, name: str
 
 def load_window(db: Session, f: Filters) -> list[Cluster]:
     now = utcnow()
-    q = select(Cluster).options(
+    q_str = (f.q or "").strip()
+    stmt = select(Cluster).options(
         selectinload(Cluster.articles).selectinload(Article.outlet),
         selectinload(Cluster.articles).selectinload(Article.subjects),
-    ).order_by(Cluster.last_seen.desc()).limit(MAX_CLUSTERS)
+    )
+    if q_str:
+        like = f"%{q_str}%"
+        tagged = select(article_subjects.c.article_id).join(Subject, Subject.id == article_subjects.c.subject_id) \
+            .where(or_(Subject.name.ilike(like), cast(Subject.aliases, String).ilike(like)))
+        matching_cluster_ids = select(Article.cluster_id).join(Outlet, Outlet.id == Article.outlet_id).where(
+            Article.cluster_id.is_not(None),
+            or_(
+                Article.title.ilike(like),
+                Article.description.ilike(like),
+                Article.author.ilike(like),
+                Outlet.name.ilike(like),
+                Article.id.in_(tagged)
+            )
+        ).distinct()
+        stmt = stmt.where(or_(Cluster.title.ilike(like), Cluster.id.in_(matching_cluster_ids)))
     win = WINDOWS.get(f.time)
     if win is not None:
-        q = q.where(Cluster.last_seen >= now - win)
-    return list(db.scalars(q).all())
+        stmt = stmt.where(Cluster.last_seen >= now - win)
+    stmt = stmt.order_by(Cluster.last_seen.desc()).limit(MAX_CLUSTERS)
+    return list(db.scalars(stmt).all())
 
 
 def build_dashboard(db: Session, f: Filters) -> dict:
@@ -190,7 +209,7 @@ def build_dashboard(db: Session, f: Filters) -> dict:
 
     # Story-level filters: subject search + category (union of post categories).
     def story_ok(c: Cluster, ignore_cat=False) -> bool:
-        if q and not any(_matches_q(a, q) for a in c.articles):
+        if q and not (contains_term(c.title or "", q) or q.lower() in (c.title or "").lower() or any(_matches_q(a, q) for a in c.articles)):
             return False
         if not ignore_cat and f.cat != "All" and not any(f.cat in (a.categories or []) for a in c.articles):
             return False

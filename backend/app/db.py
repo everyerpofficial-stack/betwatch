@@ -13,6 +13,29 @@ class Base(DeclarativeBase):
 
 def _make_engine(url: str):
     if url.startswith("sqlite"):
+        # Auto-seed SQLite db if target is missing or unpopulated
+        import shutil
+        from pathlib import Path
+        db_path = url.replace("sqlite:////", "//").replace("sqlite:///", "").replace("sqlite://", "")
+        if db_path and not db_path.startswith(":memory:"):
+            target = Path(db_path)
+            if not target.is_absolute():
+                target = Path.cwd() / target
+            if not target.exists() or target.stat().st_size < 100000:
+                for cand in [
+                    Path(__file__).resolve().parent / "betwatch.db",
+                    Path(__file__).resolve().parents[1] / "betwatch.db",
+                    Path(__file__).resolve().parents[2] / "backend" / "betwatch.db",
+                    Path.cwd() / "backend" / "betwatch.db",
+                ]:
+                    if cand.exists() and cand.is_file() and cand.stat().st_size > 100000 and cand.resolve() != target.resolve():
+                        try:
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copyfile(cand, target)
+                            break
+                        except Exception:
+                            pass
+
         eng = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})
 
         @event.listens_for(eng, "connect")

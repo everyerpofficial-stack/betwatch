@@ -13,9 +13,11 @@ for p in (str(BACKEND_DIR), str(ROOT_DIR), "/var/task/backend", "/var/task"):
 
 # Serverless environment configuration
 if os.environ.get("VERCEL"):
-    # If no external PostgreSQL DATABASE_URL is configured, default to /tmp/betwatch.db
+    # Without an external PostgreSQL DATABASE_URL, run SQLite from a /tmp copy of the bundled
+    # snapshot. Any SQLite URL is redirected: /var/task is read-only, and a /tmp URL set in the
+    # project env would otherwise skip the copy and start from an empty, freshly seeded file.
     current_db = os.environ.get("DATABASE_URL", "")
-    if not current_db or current_db.startswith("sqlite:///."):
+    if not current_db or current_db.startswith("sqlite"):
         tmp_db = "/tmp/betwatch.db"
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
 

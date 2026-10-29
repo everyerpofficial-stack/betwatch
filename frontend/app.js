@@ -206,7 +206,22 @@
   }
 
   function viewFeed(d) {
-    if (!d.stories.length) { $("view").innerHTML = `<div class="ph empty">No stories match these filters yet. Try a longer timeframe — the collector keeps adding coverage.</div>`; return; }
+    if (!d.stories.length) {
+      const qText = S.q ? ` for “${esc(S.q)}”` : "";
+      const fetchBtn = S.q ? `
+        <div style="margin-top:16px">
+          <button type="button" class="btn-amber" id="fetch-search-now" style="min-height:38px;line-height:38px;padding:0 20px;font-size:13px;font-weight:700">
+            🔍 Fetch live news & stories for "${esc(S.q)}" now
+          </button>
+        </div>` : "";
+      $("view").innerHTML = `
+        <div class="ph empty" style="text-align:center;padding:40px 20px">
+          <div style="font-size:16px;font-weight:600;margin-bottom:8px">No stories match these filters yet${qText}.</div>
+          <div class="muted">Try setting timeframe to "All time", or trigger a live fetch for this topic.</div>
+          ${fetchBtn}
+        </div>`;
+      return;
+    }
     const srcLabel = { ai: "AI SUMMARY", publisher: "PUBLISHER EXCERPT", none: "NO SUMMARY" };
     const rows = d.stories.map((s) => {
       const firstPost = s.posts[0] || {};
@@ -436,9 +451,32 @@
         }
         return;
       }
+      if (t.id === "fetch-search-now") {
+        const kw = S.q.trim();
+        if (kw) {
+          t.disabled = true;
+          t.textContent = `Fetching live news for "${kw}"…`;
+          try {
+            await fetch("/api/keywords", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: kw, query: kw })
+            });
+            setTimeout(() => {
+              load();
+              loadKeywords();
+            }, 3500);
+          } catch (err) {
+            alert("Error fetching: " + err.message);
+            t.disabled = false;
+            t.textContent = `🔍 Fetch live news for "${kw}" now`;
+          }
+        }
+        return;
+      }
       if (t.id === "save-keyword") {
         const cur = S.q || $("subject").value.trim();
-        const kw = prompt("Enter keyword to track and collect news for:", cur || "");
+        const kw = cur || prompt("Enter keyword to track and collect news for:", "");
         if (kw && kw.trim()) {
           try {
             const r = await fetch("/api/keywords", {
@@ -496,6 +534,13 @@
 
   let qTimer;
   $("subject").addEventListener("input", (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => set({ q: e.target.value.trim(), preset: null }), 350); });
+  $("subject").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      clearTimeout(qTimer);
+      set({ q: e.target.value.trim(), preset: null, time: "all" });
+    }
+  });
   $("ch").addEventListener("change", (e) => set({ outlet: e.target.value }));
   $("jr").addEventListener("change", (e) => set({ journo: e.target.value }));
   document.addEventListener("keydown", (e) => {

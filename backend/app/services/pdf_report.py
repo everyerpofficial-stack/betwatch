@@ -32,8 +32,12 @@ from reportlab.platypus import (
 from reportlab.platypus import Paragraph as _Paragraph
 from sqlalchemy.orm import Session
 
-from app.services.channel_profile import build_channel_profile_data
-from app.services.dashboard import Filters, build_dashboard
+try:
+    from .channel_profile import build_channel_profile_data
+    from .dashboard import Filters, build_dashboard
+except ImportError:
+    from app.services.channel_profile import build_channel_profile_data
+    from app.services.dashboard import Filters, build_dashboard
 
 # ---------------------------------------------------------------- Font setup
 # Latin text uses a system TTF (or built-in Helvetica). The bundled Noto Sans
