@@ -74,8 +74,43 @@
     const p = new URLSearchParams();
     Object.keys(DEFAULTS).forEach((k) => { if (S[k] && S[k] !== DEFAULTS[k]) p.set(k, S[k]); });
     history.replaceState(null, "", p.toString() ? "?" + p : location.pathname);
+    showResults();
     load();
   }
+
+  // ---------------------------------------------------------------- layout: search bar, filter panel, wide view
+  const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (_) { return null; } };
+
+  // A search or filter picked far down the page (the side panels stay on screen) jumps back to the top of the results.
+  function showResults() {
+    if ($("tabs").getBoundingClientRect().top < Math.max(0, $("qbar").getBoundingClientRect().bottom)) $("insights").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function setPanel(open) {
+    $("filter-panel").hidden = !open;
+    $("filters-toggle").setAttribute("aria-expanded", String(open));
+    pref("bw-filters", open ? "open" : "closed");
+  }
+
+  function setWide(on) {
+    document.body.classList.toggle("wideview", on);
+    $("wide-toggle").setAttribute("aria-pressed", String(on));
+    $("wide-toggle").textContent = on ? "Show side panels" : "Wide view";
+    pref("bw-wide", on ? "1" : "0");
+  }
+
+  // Active filters that do not fit scroll sideways; a fade on the right edge shows there are more.
+  const chipFade = () => { const c = $("active-filter-chips"); c.classList.toggle("more", c.scrollLeft + c.clientWidth < c.scrollWidth - 1); };
+  $("active-filter-chips").addEventListener("scroll", chipFade, { passive: true });
+
+  // The side panels stick just below the search bar, whose height changes as it wraps (it does not stick on phones).
+  const stick = () => {
+    const h = getComputedStyle($("qbar")).position === "sticky" ? $("qbar").offsetHeight : 0;
+    document.documentElement.style.setProperty("--stick", h + "px");
+    chipFade();
+  };
+  if (window.ResizeObserver) new ResizeObserver(stick).observe($("qbar"));
+  stick();
 
   async function load() {
     const p = new URLSearchParams({ q: S.q, cat: S.cat, time: S.time, scope: S.scope, outlet: S.outlet, journo: S.journo, tone: S.tone, limit: String(limit) });
@@ -143,6 +178,7 @@
     if (clearAllBtn) {
       clearAllBtn.onclick = () => set(Object.assign({}, DEFAULTS));
     }
+    chipFade();
   }
 
   // ---------------------------------------------------------------- render
@@ -159,6 +195,10 @@
 
     $("subject").value = document.activeElement === $("subject") ? $("subject").value : S.q;
     $("suggestions").innerHTML = `<span class="muted">Try:</span>` + SUGGESTIONS.map((w) => `<button type="button" class="sugg" data-q="${esc(w)}">${esc(w)}</button>`).join("");
+    $("suggestions").hidden = !!S.q;
+    const nFilters = [S.cat !== "All", S.time !== "all", S.scope !== "Both", !!S.outlet, !!S.journo, S.tone !== "All"].filter(Boolean).length;
+    $("filter-count").textContent = nFilters;
+    $("filter-count").hidden = !nFilters;
     $("cats").innerHTML = d.cats.map((c) => `<button type="button" class="chip${S.cat === c.label ? " on" : ""}" data-cat="${esc(c.label)}">${esc(c.label)}<span class="ct">${inNum(c.count)}</span></button>`).join("");
     $("times").innerHTML = TIMES.map(([v, l]) => `<button type="button" class="seg${S.time === v ? " on" : ""}" data-time="${v}">${l}</button>`).join("");
     $("scopes").innerHTML = SCOPES.map(([v, l]) => `<button type="button" class="seg${S.scope === v ? " on" : ""}" data-scope="${v}">${l}</button>`).join("");
@@ -177,7 +217,7 @@
       <div class="kpi"><span class="lbl">Channels</span><span class="v">${inNum(k.outlets)}</span><span class="s">outlets that covered it</span></div>
       <div class="kpi"><span class="lbl">Journalists</span><span class="v">${inNum(k.journos)}</span><span class="s">${inNum(k.noByline)} posts without byline</span></div>
       <div class="kpi"><span class="lbl">Videos · Social</span><span class="v">${inNum(k.videos)} · ${inNum(k.social)}</span><span class="s">video reports · social posts</span></div>
-      <div class="kpi wide"><span class="lbl">First reported</span><span class="big">${esc(k.first)}</span><span class="s">${esc(k.firstDate)}</span></div>
+      <div class="kpi wide"><span class="lbl">First reported</span><span class="big">${esc(k.first)}</span><span class="s" title="${esc(k.firstDate)}">${esc(k.firstDate)}</span></div>
       <div class="kpi wide"><span class="lbl">Tone split</span>
         <div class="split" aria-hidden="true"><div style="width:${k.negPct}%;background:#C2410C"></div><div style="width:${k.neuPct}%;background:#9CA3AF"></div><div style="width:${k.posPct}%;background:#1D4ED8"></div></div>
         <span class="s">Negative ${inNum(k.neg)} · Neutral ${inNum(k.neu)} · Positive ${inNum(k.pos)}</span></div>`;
@@ -312,24 +352,24 @@
   }
 
   function viewVideo(d) {
-    const cards = d.videos.map((p) => `<div class="card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
-      ${p.thumbnail ? `<img class="thumb" src="${safeUrl(p.thumbnail)}" alt="" loading="lazy">` : `<div class="thumb" aria-hidden="true"></div>`}
-      <div style="flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:6px">
-        <div class="tags"><span class="tag">${esc(p.o)}</span><span class="mono muted">${esc(p.dl)}</span><span class="${toneCls(p.tone)}">${esc(p.tone)}</span>${p.is_live ? `<span class="tag live">LIVE</span>` : ""}</div>
-        <div class="h" style="font-size:15px;font-weight:600;line-height:1.4">${esc(p.h)}</div>
-        <div class="m muted">Posted by ${esc(p.o)} · <a href="${safeUrl(p.url)}" target="_blank" rel="noopener noreferrer">Watch</a></div></div></div>`).join("");
+    const cards = d.videos.map((p) => `<article class="card gcard">
+      ${p.thumbnail ? `<img class="gthumb" src="${safeUrl(p.thumbnail)}" alt="" loading="lazy">` : `<div class="gthumb" aria-hidden="true"></div>`}
+      <div class="tags"><span class="tag">${esc(p.o)}</span><span class="mono muted">${esc(p.dl)}</span><span class="${toneCls(p.tone)}">${esc(p.tone)}</span>${p.is_live ? `<span class="tag live">LIVE</span>` : ""}</div>
+      <div class="gtext" title="${esc(p.h)}">${esc(p.h)}</div>
+      <div class="m muted">Posted by ${esc(p.o)} · <a href="${safeUrl(p.url)}" target="_blank" rel="noopener noreferrer">Watch</a></div></article>`).join("");
     const note = `<div class="ph">Showing video reports from YouTube and news broadcasters for “${esc(d.subject_name)}”.</div>`;
-    $("view").innerHTML = (cards || `<div class="ph empty">No videos on this subject in this timeframe.</div>`) + note;
+    $("view").innerHTML = (cards ? `<div class="grid">${cards}</div>` : `<div class="ph empty">No videos on this subject in this timeframe.</div>`) + note;
   }
 
   function viewSocial(d) {
-    const posts = d.social.map((p) => `<div class="card stack" style="gap:6px"><div class="tags"><span class="tag intl">${esc(p.platform || "Social")}</span><strong style="font-size:14px">${esc(p.by)}</strong><span class="mono muted">${esc(p.dl)}</span><span class="${toneCls(p.tone)}">${esc(p.tone)}</span></div>
-      ${p.thumbnail ? `<div style="margin:6px 0"><img src="${safeUrl(p.thumbnail)}" alt="" style="max-height:260px;border-radius:8px;object-fit:cover;box-shadow:0 1px 3px rgba(0,0,0,0.1)" loading="lazy"></div>` : ""}
-      <div style="font-size:15px;line-height:1.45">${esc(p.h)}</div><div class="m muted">${esc(p.o)} · <a href="${safeUrl(p.url)}" target="_blank" rel="noopener noreferrer">Open post</a></div></div>`).join("");
-    const pages = d.pages.map((pg) => `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:14px 18px;border-bottom:1px solid #F3F4F6"><span><strong>${esc(pg.handle)}</strong> <span class="muted">· ${esc(pg.net)}</span></span><span class="mono">${pg.n} posts</span></div>`).join("");
+    const posts = d.social.map((p) => `<article class="card gcard">
+      ${p.thumbnail ? `<img class="gthumb" src="${safeUrl(p.thumbnail)}" alt="" loading="lazy">` : ""}
+      <div class="tags"><span class="tag intl">${esc(p.platform || "Social")}</span><strong style="font-size:14px">${esc(p.by)}</strong><span class="mono muted">${esc(p.dl)}</span><span class="${toneCls(p.tone)}">${esc(p.tone)}</span></div>
+      <div class="gtext long" title="${esc(p.h)}">${esc(p.h)}</div><div class="m muted">${esc(p.o)} · <a href="${safeUrl(p.url)}" target="_blank" rel="noopener noreferrer">Open post</a></div></article>`).join("");
+    const pages = d.pages.map((pg) => `<div class="pg"><span><strong>${esc(pg.handle)}</strong> <span class="muted">· ${esc(pg.net)}</span></span><span class="mono">${pg.n} posts</span></div>`).join("");
     const note = `<div class="ph">Showing social media coverage across Instagram, Reddit, and Bluesky.</div>`;
-    $("view").innerHTML = `<div class="lbl">Posts on social media</div>${posts || `<div class="ph">No social posts on this subject yet.</div>`}
-      <div class="lbl" style="margin-top:8px">Pages, channels &amp; accounts covering this subject</div><div class="card" style="padding:0">${pages || `<div class="ph" style="margin:12px">None yet.</div>`}</div>${note}`;
+    $("view").innerHTML = `<div class="lbl">Posts on social media</div>${posts ? `<div class="grid">${posts}</div>` : `<div class="ph">No social posts on this subject yet.</div>`}
+      <div class="lbl" style="margin-top:8px">Pages, channels &amp; accounts covering this subject</div><div class="card pages">${pages || `<div class="ph" style="margin:12px">None yet.</div>`}</div>${note}`;
   }
 
   // ---------------------------------------------------------------- saved searches & keywords
@@ -352,24 +392,19 @@
         return;
       }
       el.innerHTML = keywords.map((k) => {
-        const isCollecting = k.status && k.status.startsWith("Collecting");
-        const isFailed = k.status && k.status.startsWith("Failed");
-        const statusColor = isCollecting ? "#B45309" : (isFailed ? "#B91C1C" : "#047857");
-        const statusBg = isCollecting ? "#FEF3C7" : (isFailed ? "#FEE2E2" : "#D1FAE5");
+        const state = k.status && k.status.startsWith("Collecting") ? " collecting" : (k.status && k.status.startsWith("Failed") ? " failed" : "");
         return `
-          <div class="kw-card" style="display:flex;flex-direction:column;gap:4px;padding:6px 10px;border-radius:8px;background:#FFFFFF;border:1px solid #E5E7EB;margin-bottom:6px">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-              <button type="button" class="kw-btn" data-search-kw="${esc(k.query || k.name)}" style="border:0;background:transparent;text-align:left;font-weight:600;font-size:13px;color:#111827;cursor:pointer;flex:1;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                ${esc(k.name)}
-              </button>
-              <span class="mono" style="font-size:12px;font-weight:600;color:#9A3412">${k.posts}</span>
+          <div class="kw-card${S.q === k.name ? " on" : ""}">
+            <div class="kw-top">
+              <button type="button" class="kw-btn" data-search-kw="${esc(k.name)}" title="Show all ${inNum(k.posts)} posts on ${esc(k.name)}">${esc(k.name)}</button>
+              <span class="kw-n">${inNum(k.posts)}</span>
             </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;font-size:11px">
-              <span style="padding:2px 6px;border-radius:4px;font-family:'IBM Plex Mono',monospace;background:${statusBg};color:${statusColor}" title="${esc(k.status)}">${esc(k.status)}</span>
-              <div style="display:flex;gap:2px">
-                <button type="button" class="peek" style="min-width:24px;min-height:24px;padding:0 4px;font-size:11px" data-edit-kw="${k.id}" data-name="${esc(k.name)}" data-query="${esc(k.query)}" title="Edit keyword">✎</button>
-                <button type="button" class="peek" style="min-width:24px;min-height:24px;padding:0 4px;font-size:11px" data-toggle-kw="${k.id}" data-enabled="${k.enabled}" title="${k.enabled ? 'Pause collection' : 'Resume collection'}">${k.enabled ? '⏸' : '▶'}</button>
-                <button type="button" class="peek" style="min-width:24px;min-height:24px;padding:0 4px;font-size:11px" data-del-kw="${k.id}" title="Delete keyword">×</button>
+            <div class="kw-bot">
+              <span class="kw-status${state}" title="${esc(k.status)}">${esc(k.status)}</span>
+              <div class="kw-acts">
+                <button type="button" class="peek xs" data-edit-kw="${k.id}" data-name="${esc(k.name)}" data-query="${esc(k.query)}" title="Edit keyword">✎</button>
+                <button type="button" class="peek xs" data-toggle-kw="${k.id}" data-enabled="${k.enabled}" title="${k.enabled ? 'Pause collection' : 'Resume collection'}">${k.enabled ? '⏸' : '▶'}</button>
+                <button type="button" class="peek xs" data-del-kw="${k.id}" title="Delete keyword">×</button>
               </div>
             </div>
           </div>
@@ -497,6 +532,15 @@
         }
         return;
       }
+      if (t.id === "filters-toggle") {
+        // Once the panel has scrolled away, the button brings it back into view instead of closing it.
+        const panel = $("filter-panel"), away = window.scrollY > panel.offsetTop - $("qbar").offsetHeight + 4;
+        if (panel.hidden) setPanel(true);
+        else if (!away) setPanel(false);
+        if (away) window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (t.id === "wide-toggle") { setWide(!document.body.classList.contains("wideview")); return; }
       if (t.id === "export-pdf") {
         const p = new URLSearchParams({ q: S.q, cat: S.cat, time: S.time, scope: S.scope, outlet: S.outlet, journo: S.journo, tone: S.tone });
         window.open("/api/reports/subject.pdf?" + p, "_blank");
@@ -539,6 +583,7 @@
       e.preventDefault();
       clearTimeout(qTimer);
       set({ q: e.target.value.trim(), preset: null, time: "all" });
+      $("insights").scrollIntoView({ behavior: "smooth" });  // a submitted search goes straight to its results
     }
   });
   $("ch").addEventListener("change", (e) => set({ outlet: e.target.value }));
@@ -568,5 +613,7 @@
   }
 
   initTheme();
+  setPanel(pref("bw-filters") ? pref("bw-filters") === "open" : window.innerWidth > 640);
+  setWide(pref("bw-wide") === "1");
   load().then(connect);
 })();

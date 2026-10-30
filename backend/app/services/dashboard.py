@@ -9,12 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, and_, cast, false, func, or_, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..models import Article, Cluster, CollectionRun, Outlet, Source, Subject, article_subjects, utcnow
-from ..ingest.text import contains_term
+from ..ingest.text import SearchQuery, search_words
 
 WINDOWS = {"day": timedelta(days=1), "week": timedelta(days=7), "month": timedelta(days=31),
            "year": timedelta(days=365), "all": None}
@@ -60,19 +60,74 @@ def _when(a: Article) -> datetime:
     return a.published_at or a.collected_at
 
 
-def _matches_q(a: Article, q: str) -> bool:
-    if not q:
-        return True
-    c_title = a.cluster.title if getattr(a, "cluster", None) else ""
-    hay = " ".join([a.title or "", a.description or "", a.author or "", a.outlet.name or "", c_title] +
-                   [s.name for s in a.subjects] + [x for s in a.subjects for x in (s.aliases or [])])
-    return contains_term(hay, q) or q.lower() in hay.lower()
+class PostMatcher:
+    """The one post-level rule for every filter. The feed, KPIs, category chips, channels, journalists, rankings,
+    keyword and A–Z counts all use it, so a number shown anywhere equals the posts listed on click.
+
+    A post matches the search when its own headline, description, byline or channel name contains it. When the
+    search names a tracked subject, a post also matches if it is tagged with that subject (the subject's news
+    search found it, maybe in the article body) or its text contains one of the subject's aliases, so adding an
+    alias (e.g. a Hindi spelling) covers posts collected before it was added.
+    The story it was clustered into does not count: a loose story must not pull unrelated posts into a search.
+    """
+
+    def __init__(self, f: Filters):
+        self.f = f
+        self.sq = SearchQuery(f.q) if (f.q or "").strip() else None
+        self.since = _since(f.time) if f.time in WINDOWS else None
+        self.synonyms = SearchQuery.any_phrase([])  # names + aliases of the subjects the search names; set by sql_filter
+        self._q_hits: dict[int, bool] = {}
+        self._subject_hits: dict[int, bool] = {}
+        # Set by load_window to the posts passing sql_filter, so the feed judges exactly the posts that
+        # matching_posts (channel counts) judges, even where Python would match text the SQL LIKE cannot.
+        self.candidates: set[int] | None = None
+
+    def subject_ok(self, s: Subject) -> bool:
+        hit = self._subject_hits.get(s.id)
+        if hit is None:
+            hit = self._subject_hits[s.id] = self.sq.names_subject(s.name, s.aliases or [])
+        return hit
+
+    def q_ok(self, a: Article) -> bool:
+        if self.sq is None:
+            return True
+        if self.candidates is not None and a.id not in self.candidates:
+            return False
+        hit = self._q_hits.get(a.id)
+        if hit is None:
+            own = search_words(" ".join([a.title or "", a.description or "", a.author or "", a.outlet.name or ""]))
+            hit = self._q_hits[a.id] = (self.sq.matches_words(own) or self.synonyms.matches_words(own)
+                                        or any(self.subject_ok(s) for s in a.subjects))
+        return hit
+
+    def ok(self, a: Article, ignore: tuple[str, ...] = ()) -> bool:
+        f = self.f
+        if self.since is not None and "time" not in ignore and _when(a) < self.since:
+            return False
+        if f.cat and f.cat != "All" and "cat" not in ignore and f.cat not in (a.categories or []):
+            return False
+        return _post_ok(a, f, ignore) and self.q_ok(a)
+
+    def sql_filter(self, db: Session):
+        """SQL pre-filter for the search: a superset of q_ok (LIKE on each word), refined in Python by q_ok.
+
+        Needs Outlet joined to Article."""
+        named = [s for s in db.scalars(select(Subject)).all() if self.subject_ok(s)]
+        tagged_ids = [s.id for s in named]
+        self.synonyms = SearchQuery.any_phrase([t for s in named for t in [s.name, *(s.aliases or [])]])
+        conds = [and_(*[or_(Article.title.ilike(p), Article.description.ilike(p), Article.author.ilike(p),
+                            Outlet.name.ilike(p)) for p in pats]) if pats else true()
+                 for pats in self.sq.sql_patterns() + self.synonyms.sql_patterns()]
+        if tagged_ids:
+            conds.append(Article.id.in_(select(article_subjects.c.article_id)
+                                        .where(article_subjects.c.subject_id.in_(tagged_ids))))
+        return or_(*conds) if conds else false()
 
 
-def _post_ok(a: Article, f: Filters, ignore: str = "") -> bool:
-    if ignore != "outlet" and f.outlet and a.outlet.name != f.outlet:
+def _post_ok(a: Article, f: Filters, ignore: tuple[str, ...] = ()) -> bool:
+    if "outlet" not in ignore and f.outlet and a.outlet.name != f.outlet:
         return False
-    if ignore != "journo" and f.journo and (a.author or NO_BYLINE) != f.journo:
+    if "journo" not in ignore and f.journo and (a.author or NO_BYLINE) != f.journo:
         return False
     if f.tone != "All" and a.tone != f.tone:
         return False
@@ -110,20 +165,19 @@ def matching_posts(db: Session, f: Filters, outlet_id: int | None = None, ignore
 
     Single source of truth for per-channel counts: the rankings, the Channels list numbers, the News channel
     dropdown and the channel detail all use this, so a number shown anywhere equals the posts listed on click.
-    Post-level semantics: q must match the post (headline, description, byline, outlet, tagged subjects), cat must
-    be one of the post's own categories, and time applies to the post's own date.
+    SQL narrows the rows; PostMatcher.ok, the same rule the feed applies, decides.
     """
-    q = (f.q or "").strip()
+    m = PostMatcher(f)
     stmt = select(Article).join(Outlet, Outlet.id == Article.outlet_id).options(
         selectinload(Article.outlet), selectinload(Article.subjects),
         selectinload(Article.cluster).selectinload(Cluster.articles))
     if outlet_id is not None:
         stmt = stmt.where(Article.outlet_id == outlet_id)
+        ignore = (*ignore, "outlet")
     elif f.outlet and "outlet" not in ignore:
         stmt = stmt.where(Outlet.name == f.outlet)
-    since = _since(f.time) if f.time in WINDOWS else None
-    if since is not None:
-        stmt = stmt.where(func.coalesce(Article.published_at, Article.collected_at) >= since)
+    if m.since is not None:
+        stmt = stmt.where(func.coalesce(Article.published_at, Article.collected_at) >= m.since)
     if f.cat and f.cat != "All":
         stmt = stmt.where(cast(Article.categories, String).like(f'%"{f.cat}"%'))
     if f.tone and f.tone != "All":
@@ -132,18 +186,9 @@ def matching_posts(db: Session, f: Filters, outlet_id: int | None = None, ignore
         stmt = stmt.where(Article.scope == f.scope)
     if f.journo and "journo" not in ignore:
         stmt = stmt.where(Article.author.is_(None) if f.journo == NO_BYLINE else Article.author == f.journo)
-    if q:
-        like = f"%{q}%"
-        tagged = select(article_subjects.c.article_id).join(Subject, Subject.id == article_subjects.c.subject_id) \
-            .where(or_(Subject.name.ilike(like), cast(Subject.aliases, String).ilike(like)))
-        # SQL pre-filter is a superset; _matches_q below is the exact rule the feed uses.
-        stmt = stmt.outerjoin(Cluster, Cluster.id == Article.cluster_id).where(
-            or_(Article.title.ilike(like), Article.description.ilike(like), Article.author.ilike(like),
-                Outlet.name.ilike(like), Cluster.title.ilike(like), Article.id.in_(tagged)))
-    rows = list(db.scalars(stmt).all())
-    if q:
-        rows = [a for a in rows if _matches_q(a, q)]
-    return rows
+    if m.sq is not None:
+        stmt = stmt.where(m.sql_filter(db))
+    return [a for a in db.scalars(stmt).all() if m.ok(a, ignore)]
 
 
 def channel_detail_for(db: Session, f: Filters, outlet: Outlet | None, name: str) -> dict:
@@ -173,31 +218,18 @@ def channel_detail_for(db: Session, f: Filters, outlet: Outlet | None, name: str
             "total": total, "posts": out, "reason": reason, "reason_kind": reason_kind}
 
 
-def load_window(db: Session, f: Filters) -> list[Cluster]:
-    now = utcnow()
-    q_str = (f.q or "").strip()
+def load_window(db: Session, f: Filters, m: PostMatcher) -> list[Cluster]:
+    """Stories that can hold a matching post: active in the timeframe and, when searching, with a candidate post."""
     stmt = select(Cluster).options(
         selectinload(Cluster.articles).selectinload(Article.outlet),
         selectinload(Cluster.articles).selectinload(Article.subjects),
     )
-    if q_str:
-        like = f"%{q_str}%"
-        tagged = select(article_subjects.c.article_id).join(Subject, Subject.id == article_subjects.c.subject_id) \
-            .where(or_(Subject.name.ilike(like), cast(Subject.aliases, String).ilike(like)))
-        matching_cluster_ids = select(Article.cluster_id).join(Outlet, Outlet.id == Article.outlet_id).where(
-            Article.cluster_id.is_not(None),
-            or_(
-                Article.title.ilike(like),
-                Article.description.ilike(like),
-                Article.author.ilike(like),
-                Outlet.name.ilike(like),
-                Article.id.in_(tagged)
-            )
-        ).distinct()
-        stmt = stmt.where(or_(Cluster.title.ilike(like), Cluster.id.in_(matching_cluster_ids)))
-    win = WINDOWS.get(f.time)
-    if win is not None:
-        stmt = stmt.where(Cluster.last_seen >= now - win)
+    if m.sq is not None:
+        cand = select(Article.id, Article.cluster_id).join(Outlet, Outlet.id == Article.outlet_id).where(m.sql_filter(db))
+        m.candidates = {i for i, _ in db.execute(cand).all()}
+        stmt = stmt.where(Cluster.id.in_(cand.with_only_columns(Article.cluster_id)))
+    if m.since is not None:
+        stmt = stmt.where(Cluster.last_seen >= m.since)
     stmt = stmt.order_by(Cluster.last_seen.desc()).limit(MAX_CLUSTERS)
     return list(db.scalars(stmt).all())
 
@@ -205,39 +237,42 @@ def load_window(db: Session, f: Filters) -> list[Cluster]:
 def build_dashboard(db: Session, f: Filters) -> dict:
     s = get_settings()
     q = f.q.strip()
-    clusters = load_window(db, f)
-
-    # Story-level filters: subject search + category (union of post categories).
-    def story_ok(c: Cluster, ignore_cat=False) -> bool:
-        if q and not (contains_term(c.title or "", q) or q.lower() in (c.title or "").lower() or any(_matches_q(a, q) for a in c.articles)):
-            return False
-        if not ignore_cat and f.cat != "All" and not any(f.cat in (a.categories or []) for a in c.articles):
-            return False
-        return bool(c.articles)
-
-    in_scope = [c for c in clusters if story_ok(c)]
-    scoped_posts: list[tuple[Article, Cluster]] = [(a, c) for c in in_scope for a in c.articles]
+    m = PostMatcher(f)
+    clusters = load_window(db, f, m)
 
     # ---- feed --------------------------------------------------------------------------------------------------
+    # A story is listed when at least one of its posts matches every filter. Its card describes only the posts
+    # that match the search (all of them when there is no search); KPIs count the posts matching every filter.
     stories, visible = [], []
-    for c in in_scope:
+    cat_base: list[list[Article]] = []  # per story, posts matching every filter except category (category chips)
+    journo_base: list[tuple[Article, Cluster]] = []  # posts matching every filter except journalist
+    for c in clusters:
         arts = sorted(c.articles, key=_when)
-        shown = [a for a in arts if _post_ok(a, f)]
+        rel = [a for a in arts if m.q_ok(a)]
+        if not rel:
+            continue
+        cb = [a for a in rel if m.ok(a, ignore=("cat",))]
+        if cb:
+            cat_base.append(cb)
+        journo_base.extend((a, c) for a in rel if m.ok(a, ignore=("journo",)))
+        shown = [a for a in rel if m.ok(a)]
         if not shown:
             continue
         visible.extend((a, c) for a in shown)
-        firsts = _first_ids(arts)
-        ordered = sorted(arts, key=lambda a: (a.id not in firsts, _when(a)))
-        first_names = sorted({a.outlet.name for a in arts if a.id in firsts})
-        tone = _majority_tone(arts)
-        cats = sorted({x for a in arts for x in (a.categories or [])}, key=CATEGORIES.index)
-        subjects = sorted({sj.name for a in arts for sj in a.subjects})
-        scopes = Counter(a.scope for a in arts)
+        firsts = _first_ids(rel)
+        ordered = sorted(rel, key=lambda a: (a.id not in firsts, _when(a)))
+        first_names = sorted({a.outlet.name for a in rel if a.id in firsts})
+        tone = _majority_tone(rel)
+        cats = sorted({x for a in rel for x in (a.categories or [])}, key=CATEGORIES.index)
+        subjects = sorted({sj.name for a in rel for sj in a.subjects})
+        scopes = Counter(a.scope for a in rel)
+        # A loose story's headline may not mention the search; lead with its first matching headline instead
+        title = c.title if m.sq is None or m.sq.matches(c.title or "") else ordered[0].title
         stories.append({
-            "id": c.id, "title": c.title, "date_label": fmt(c.last_seen, with_time=False),
+            "id": c.id, "title": title, "date_label": fmt(c.last_seen, with_time=False),
             "first_seen": iso(c.first_seen), "last_seen": iso(c.last_seen),
             "first_name": " & ".join(first_names) + (" (same time)" if len(first_names) > 1 else ""),
-            "outlet_count": len({a.outlet_id for a in arts}), "post_count": len(arts), "shown_count": len(shown),
+            "outlet_count": len({a.outlet_id for a in rel}), "post_count": len(rel), "shown_count": len(shown),
             "tone": tone, "scope": scopes.most_common(1)[0][0], "cats": cats or ["General"],
             "summary": c.summary or ("The feeds for this story carry no description text. The headlines below show what "
                                      "each outlet led with. Add ANTHROPIC_API_KEY for AI summaries."),
@@ -266,9 +301,9 @@ def build_dashboard(db: Session, f: Filters) -> dict:
     }
 
     # ---- category chips (ignore category filter, like the design) --------------------------------------------
-    base_for_cats = [c for c in clusters if story_ok(c, ignore_cat=True)]
-    cats = [{"label": cat, "count": len(base_for_cats) if cat == "All" else
-             sum(1 for c in base_for_cats if any(cat in (a.categories or []) for a in c.articles))} for cat in CATEGORIES]
+    # Each chip's count is the number of stories listed after clicking it.
+    cats = [{"label": cat, "count": len(cat_base) if cat == "All" else
+             sum(1 for posts in cat_base if any(cat in (a.categories or []) for a in posts))} for cat in CATEGORIES]
 
     # ---- channels ------------------------------------------------------------------------------------------------
     # Counts come from matching_posts (post-level, uncapped) so each number equals the posts listed on click.
@@ -287,9 +322,7 @@ def build_dashboard(db: Session, f: Filters) -> dict:
 
     # ---- journalists ---------------------------------------------------------------------------------------------
     jm: dict[str, dict] = defaultdict(lambda: {"n": 0, "outlets": set(), "tones": Counter()})
-    for a, _ in scoped_posts:
-        if not _post_ok(a, f, ignore="journo"):
-            continue
+    for a, _ in journo_base:
         name = a.author or NO_BYLINE
         jm[name]["n"] += 1
         jm[name]["outlets"].add(a.outlet.name)
@@ -299,7 +332,7 @@ def build_dashboard(db: Session, f: Filters) -> dict:
     journalists.sort(key=lambda j: (j["name"] == NO_BYLINE, -j["n"], j["name"].lower()))
     journalist_detail = None
     if f.journo:
-        jp = [(a, c) for a, c in scoped_posts if (a.author or NO_BYLINE) == f.journo and _post_ok(a, f, ignore="journo")]
+        jp = [(a, c) for a, c in journo_base if (a.author or NO_BYLINE) == f.journo]
         jp.sort(key=lambda ac: _when(ac[0]), reverse=True)
         t = Counter(a.tone for a, _ in jp)
         journalist_detail = {"name": f.journo, "count": len(jp), "neg": t["Negative"], "neu": t["Neutral"], "pos": t["Positive"],
@@ -393,11 +426,8 @@ def _since(key: str):
 
 def preset_counts(db: Session) -> dict:
     """Story counts for the watchlists (category within timeframe)."""
-    def count(cat: str | None, key: str, subject_like: str | None = None) -> int:
+    def count(cat: str, key: str) -> int:
         q = select(func.count(func.distinct(Article.cluster_id)))
-        if subject_like:
-            q = q.join(article_subjects, article_subjects.c.article_id == Article.id).join(Subject, Subject.id == article_subjects.c.subject_id) \
-                .where(Subject.name.ilike(f"%{subject_like}%"))
         since = _since(key)
         if since is not None:
             q = q.where(func.coalesce(Article.published_at, Article.collected_at) >= since)
@@ -407,7 +437,33 @@ def preset_counts(db: Session) -> dict:
         return db.scalar(q) or 0
 
     return {"d-bet": count("Betting", "day"), "w-bet": count("Betting", "week"), "m-bet": count("Betting", "month"),
-            "m-law": count("Law", "month"), "y-law": count("Law", "year"), "mahadev": count(None, "all", "mahadev")}
+            "m-law": count("Law", "month"), "y-law": count("Law", "year"),
+            "mahadev": keyword_coverage(db, "Mahadev")["stories"]}
+
+
+def _data_version(db: Session) -> tuple:
+    """Changes whenever posts, their subject tags, or subject names/aliases change (keys the count caches)."""
+    subjects = tuple(db.execute(select(Subject.id, Subject.name, cast(Subject.aliases, String))).all())
+    return (db.scalar(select(func.max(Article.id))) or 0, db.scalar(select(func.count(Article.id))) or 0,
+            db.scalar(select(func.count()).select_from(article_subjects)) or 0, hash(subjects))
+
+
+_coverage_cache: dict[tuple, dict] = {}
+
+
+def keyword_coverage(db: Session, q: str, version: tuple | None = None) -> dict:
+    """What an all-time search for q lists: posts, stories, channels, first and latest post dates."""
+    key = (q.strip().casefold(), version or _data_version(db))
+    hit = _coverage_cache.get(key)
+    if hit is None:
+        posts = matching_posts(db, Filters(q=q, cat="All", time="all"))
+        whens = [_when(a) for a in posts]
+        if len(_coverage_cache) > 500:
+            _coverage_cache.clear()
+        hit = _coverage_cache[key] = {
+            "posts": len(posts), "stories": len({a.cluster_id for a in posts if a.cluster_id is not None}),
+            "outlets": len({a.outlet_id for a in posts}), "first": min(whens, default=None), "last": max(whens, default=None)}
+    return hit
 
 
 # The exact filters a ranking click applies. rankings() counts with these same filters via matching_posts,
@@ -427,9 +483,11 @@ def rankings(db: Session, kind: str, query: str = "", limit: int = 5) -> list[di
     else:
         spec = RANKING_FILTERS[kind]
         kind_key = kind
-    key = (kind_key, limit, db.scalar(select(func.max(Article.id))) or 0, db.scalar(select(func.count(Article.id))) or 0)
+    key = (kind_key, limit, _data_version(db))
     if key in _rank_cache:
         return _rank_cache[key]
+    if len(_rank_cache) > 500:
+        _rank_cache.clear()
     f = Filters(q=spec["q"], cat=spec["cat"], time=spec["time"], scope=spec["scope"], tone=spec["tone"], journo=spec["journo"])
     counts = Counter((a.outlet.id, a.outlet.name) for a in matching_posts(db, f))
     rows = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0][1].lower()))[:limit]
@@ -441,15 +499,13 @@ def rankings(db: Session, kind: str, query: str = "", limit: int = 5) -> list[di
 
 
 def subjects_az(db: Session) -> list[dict]:
-    rows = db.execute(
-        select(Subject.id, Subject.name, Subject.query, Subject.enabled, func.count(Article.id), func.count(func.distinct(Article.cluster_id)),
-               func.count(func.distinct(Article.outlet_id)),
-               func.min(func.coalesce(Article.published_at, Article.collected_at)),
-               func.max(func.coalesce(Article.published_at, Article.collected_at)))
-        .outerjoin(article_subjects, article_subjects.c.subject_id == Subject.id)
-        .outerjoin(Article, Article.id == article_subjects.c.article_id)
-        .group_by(Subject.id).order_by(Subject.name)
-    ).all()
-    return [{"id": i, "name": n, "query": qy, "enabled": en, "letter": n[:1].upper(), "posts": p, "stories": st, "outlets": o,
-             "first": fmt(fs, with_time=False) if fs else "—", "last": fmt(ls, with_time=False) if ls else "—"}
-            for i, n, qy, en, p, st, o, fs, ls in rows]
+    """Tracked subjects A–Z; each count is what clicking the subject (an all-time search for its name) lists."""
+    version = _data_version(db)
+    out = []
+    for sj in db.scalars(select(Subject).order_by(Subject.name)).all():
+        cov = keyword_coverage(db, sj.name, version)
+        out.append({"id": sj.id, "name": sj.name, "query": sj.query, "enabled": sj.enabled, "letter": sj.name[:1].upper(),
+                    "posts": cov["posts"], "stories": cov["stories"], "outlets": cov["outlets"],
+                    "first": fmt(cov["first"], with_time=False) if cov["first"] else "—",
+                    "last": fmt(cov["last"], with_time=False) if cov["last"] else "—"})
+    return out

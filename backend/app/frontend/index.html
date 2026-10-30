@@ -11,10 +11,10 @@
 <body>
 <div class="app">
 
-<header class="top">
+<header class="top slim">
   <div class="wrap top-in">
     <div class="brand">
-      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" stroke="#FDBA74" stroke-width="2"></rect><path d="M9 22l5-6 4 4 7-9" stroke="#FDBA74" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <svg width="30" height="30" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" stroke="#FDBA74" stroke-width="2"></rect><path d="M9 22l5-6 4 4 7-9" stroke="#FDBA74" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       <div>
         <div class="brand-name">BetWatch</div>
         <div class="brand-sub">News, video &amp; social intelligence for betting, gaming and regulation</div>
@@ -36,41 +36,47 @@
   <div class="wrap"><button type="button" id="newbtn"></button></div>
 </div>
 
-<section aria-label="Filters" class="filters">
-  <div class="wrap filters-in">
-    <div class="frow">
-      <label for="subject" class="lbl" style="width:100%">Subject — person, company, app or law</label>
-      <div style="display:flex;gap:10px;align-items:center;width:100%;max-width:680px">
-        <div class="search" style="flex:1">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-          <input id="subject" class="q" type="search" placeholder="e.g. Mahadev, Online Gaming Act, Shefali Bagga" autocomplete="off">
-        </div>
-        <button type="button" class="btn-amber" id="save-keyword" style="min-height:44px;line-height:44px;white-space:nowrap;padding:0 16px;font-size:13px" title="Track this subject and collect all search sources now">+ Save keyword</button>
-      </div>
-      <div class="sugg-row" id="suggestions"><span class="muted">Try:</span></div>
+<!-- Only this one row stays on screen while scrolling; the filter panel below scrolls away with the page. -->
+<section aria-label="Search" class="qbar" id="qbar">
+  <div class="wrap qbar-in">
+    <label for="subject" class="sr-only">Subject — person, company, app or law</label>
+    <div class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input id="subject" class="q" type="search" placeholder="Search a person, company, app or law — e.g. Mahadev, Online Gaming Act" autocomplete="off">
     </div>
+    <button type="button" class="btn-amber sm" id="save-keyword" title="Track this subject and collect all search sources now">+ Save keyword</button>
+    <button type="button" class="peek sm" id="filters-toggle" aria-controls="filter-panel" aria-expanded="true" title="Show or hide the filters">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>
+      Filters<span class="fcount" id="filter-count" hidden></span>
+    </button>
+    <div class="act-chips" id="active-filter-chips" hidden>
+      <div class="chips" id="active-chips-container"></div>
+    </div>
+    <button type="button" class="peek sm" id="export-pdf" title="Export PDF report for current filters">Export PDF</button>
+    <button type="button" class="peek sm" id="wide-toggle" aria-pressed="false" title="Hide the side panels so the data uses the full width">Wide view</button>
+  </div>
+</section>
+
+<section aria-label="Filters" class="filters" id="filter-panel">
+  <div class="wrap filters-in">
     <div class="frow end">
       <div class="fgroup"><span class="lbl">Category</span><div class="chips" id="cats"></div></div>
       <div class="fgroup"><span class="lbl">Timeframe</span><div class="segbox" id="times"></div></div>
-      <div class="fgroup"><span class="lbl">Coverage</span><div class="segbox" id="scopes"></div></div>
+      <button type="button" class="peek sm" id="clear" hidden>Clear filters</button>
+      <button type="button" class="peek sm" id="save">Save search</button>
     </div>
     <div class="frow end">
       <div class="fgroup grow"><label for="ch" class="lbl">News channel</label><select id="ch" class="sel"></select></div>
       <div class="fgroup grow"><label for="jr" class="lbl">Journalist / byline</label><select id="jr" class="sel"></select></div>
+      <div class="fgroup"><span class="lbl">Coverage</span><div class="segbox" id="scopes"></div></div>
       <div class="fgroup"><span class="lbl">Tone toward betting</span><div class="segbox" id="tones"></div></div>
-      <button type="button" class="peek" id="clear" hidden>Clear filters</button>
-      <button type="button" class="peek" id="save">Save search</button>
-      <button type="button" class="peek" id="export-pdf" title="Export PDF report for current filters">Export PDF</button>
     </div>
-    <div class="frow chips-row" id="active-filter-chips" hidden>
-      <span class="lbl" style="margin-right:4px">Active filters:</span>
-      <div class="chips" id="active-chips-container"></div>
-    </div>
+    <div class="sugg-row" id="suggestions"><span class="muted">Try:</span></div>
   </div>
 </section>
 
 <div class="wrap body">
-  <section aria-label="Insights" class="insights">
+  <section aria-label="Insights" class="insights" id="insights">
     <div class="ins-head">
       <h1 id="heading">Loading…</h1>
       <span class="mono muted">Total coverage on this topic till now</span>
@@ -80,11 +86,11 @@
 
   <div class="cols">
     <aside aria-label="Watchlists" class="side">
-      <div class="lbl" style="padding:4px 12px 10px">Saved keywords</div>
+      <div class="lbl side-h">Saved keywords</div>
       <div id="keywords-list"></div>
-      <div class="lbl" style="padding:18px 12px 10px">Watchlists</div>
+      <div class="lbl side-h">Watchlists</div>
       <div id="presets"></div>
-      <div class="lbl" style="padding:18px 12px 10px">Saved searches</div>
+      <div class="lbl side-h">Saved searches</div>
       <div id="saved"></div>
     </aside>
 

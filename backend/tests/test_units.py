@@ -2,7 +2,7 @@
 from app.ingest.classify import categorize, looks_live, tone_of
 from app.ingest.enrich import author_from_html
 from app.ingest.outlets import guess_country, lookup
-from app.ingest.text import canonical_url, contains_term, fingerprint, strip_outlet_suffix
+from app.ingest.text import SearchQuery, canonical_url, contains_term, fingerprint, strip_outlet_suffix
 from app.security import is_public_http_url
 
 
@@ -25,6 +25,39 @@ def test_contains_term_whole_words():
     assert contains_term("Mahadev app case", "mahadev app")
     assert not contains_term("bets placed", "bet")
     assert contains_term("Online Gaming Act notified", "online gaming act")
+
+
+def test_search_matches_whole_words_not_word_insides():
+    assert not SearchQuery("IPL").matches("Multiple principle triple")
+    assert SearchQuery("IPL").matches("#IPL2026 final") and SearchQuery("IPL").matches("IPL auction")
+    assert not SearchQuery("ED").matches("Police arrested accused") and SearchQuery("ED").matches("ED's probe widens")
+    assert not SearchQuery("law").matches("lawyer argues") and SearchQuery("law").matches("new laws")
+    assert SearchQuery("app").matches("apps blocked") and SearchQuery("india").matches("Indian government")
+    assert not SearchQuery("IT Act").matches("its act")
+
+
+def test_search_words_any_order_phrases_and_or():
+    assert SearchQuery("Online Gaming Act").matches("Act on online gaming passed")
+    assert not SearchQuery('"Online Gaming Act"').matches("Act on online gaming passed")
+    assert SearchQuery('"Online Gaming Act"').matches("The Online Gaming Act, 2025")
+    q = SearchQuery("betting law OR gambling law")
+    assert q.matches("New gambling law in Goa") and not q.matches("Gambling crackdown")
+    assert not SearchQuery("#").matches("anything")
+
+
+def test_search_hindi_and_unicode_forms():
+    assert SearchQuery("सट्टा").matches("महादेव सट्‌टा ऐप")  # zero-width non-joiner inside the word
+    assert not SearchQuery("सट्टा").matches("सट्टेबाजी का धंधा")
+    assert SearchQuery("Dream11").matches("𝐃𝐫𝐞𝐚𝐦𝟏𝟏 contest")
+    assert "%सट्%टा%" in SearchQuery("सट्टा").sql_patterns()[0]  # LIKE tolerates the joiner too
+
+
+def test_search_names_subject_only_when_distinctive():
+    assert SearchQuery("Mahadev").names_subject("Mahadev betting", ["mahadev app"])
+    assert SearchQuery("online gaming act").names_subject("Online Gaming Act", [])
+    assert not SearchQuery("app").names_subject("Mahadev betting", ["mahadev betting app"])
+    assert not SearchQuery("betting app").names_subject("Online betting", ["betting app"])  # generic alias
+    assert not SearchQuery("सट्टा").names_subject("Online betting", ["ऑनलाइन सट्टा"])
 
 
 def test_categories():

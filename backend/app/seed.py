@@ -1,4 +1,6 @@
 """Seed sources and tracked subjects. Safe to run repeatedly (upserts by name). `python -m app.seed`"""
+import re
+
 from sqlalchemy import select
 
 from .config import get_settings
@@ -38,6 +40,19 @@ SUBJECTS = [
     ("Parimatch", "Parimatch", []),
     ("Dream11", "Dream11", []),
 ]
+# Hindi spellings, so an English search for a subject also finds Hindi coverage. Phrases rather than bare words:
+# "महादेव" alone is also the deity (temple and festival news).
+HINDI_ALIASES = {
+    "Mahadev betting": ["महादेव ऐप", "महादेव बेटिंग", "महादेव सट्टा", "महादेव सट्टेबाजी", "महादेव ऑनलाइन बेटिंग",
+                        "महादेव ऑनलाइन सट्टा", "महादेव गेमिंग ऐप", "महादेव बुक"],
+    "Online Gaming Act": ["ऑनलाइन गेमिंग कानून", "ऑनलाइन गेमिंग एक्ट", "ऑनलाइन गेमिंग बिल", "ऑनलाइन गेमिंग विधेयक",
+                          "ऑनलाइन गेमिंग नियम"],
+    "Online betting": ["ऑनलाइन बेटिंग", "ऑनलाइन सट्टा", "ऑनलाइन सट्टेबाजी", "बेटिंग ऐप", "सट्टेबाजी ऐप"],
+    "Betting law": ["सट्टेबाजी कानून", "जुआ कानून", "गैंबलिंग कानून"],
+    "Parimatch": ["पैरीमैच", "परिमैच"],
+    "Dream11": ["ड्रीम11", "ड्रीम 11"],
+    "Matka Satta": ["सट्टा मटका", "मटका सट्टा", "मटका किंग", "सट्टा किंग", "मटका"],  # सट्टा alone = any betting
+}
 
 
 def seed(only_missing: bool = True) -> None:
@@ -78,7 +93,11 @@ def seed(only_missing: bool = True) -> None:
 
         for name, query, aliases in SUBJECTS:
             if db.scalar(select(Subject).where(Subject.name == name)) is None:
-                db.add(Subject(name=name, query=query, aliases=aliases))
+                db.add(Subject(name=name, query=query, aliases=aliases + HINDI_ALIASES.get(name, [])))
+        # Existing subjects get the Hindi spellings once; a subject that already has any Hindi alias is left as edited
+        for sj in db.scalars(select(Subject).where(Subject.name.in_(list(HINDI_ALIASES)))).all():
+            if not any(re.search(r"[ऀ-ॿ]", a) for a in sj.aliases or []):
+                sj.aliases = [*(sj.aliases or []), *HINDI_ALIASES[sj.name]]
 
 
 if __name__ == "__main__":

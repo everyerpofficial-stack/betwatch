@@ -149,6 +149,34 @@ def test_story_details_extended(client):
     assert "outlet_id" in p0 and "published_at_fmt" in p0 and "is_first" in p0
 
 
+def test_search_lists_only_matching_posts_of_a_loose_story(client, db):
+    now = utcnow()
+    store_items(db, None, None, [
+        RawItem(title="TEST: Online betting racket busted in Pune, Zorbet app seized", url="https://indianexpress.com/t/z1",
+                outlet_name="Indian Express", outlet_domain="indianexpress.com", published_at=now - timedelta(hours=2)),
+        RawItem(title="TEST: Online betting racket busted in Nagpur", url="https://www.thehindu.com/t/z2",
+                outlet_name="The Hindu", outlet_domain="thehindu.com", published_at=now - timedelta(hours=1)),
+    ])
+    db.commit()
+    all_posts = client.get("/api/dashboard", params={"time": "all"}).json()
+    loose = next(s for s in all_posts["stories"] if "Pune" in " ".join(p["h"] for p in s["posts"]))
+    assert loose["post_count"] == 2  # both posts are clustered into one story
+
+    d = client.get("/api/dashboard", params={"q": "Zorbet", "time": "all"}).json()
+    listed = [p["h"] for s in d["stories"] for p in s["posts"]]
+    assert listed == ["TEST: Online betting racket busted in Pune, Zorbet app seized"]
+    assert d["k"]["posts"] == d["stories"][0]["post_count"] == sum(c["n"] for c in d["channels"]) == 1
+    assert "Zorbet" in d["stories"][0]["title"]
+
+
+def test_keyword_and_subject_counts_equal_search_results(client):
+    d = client.get("/api/dashboard", params={"q": "Testapp betting", "time": "all"}).json()
+    kw = next(k for k in client.get("/api/keywords").json() if k["name"] == "Testapp betting")
+    sub = next(s for s in client.get("/api/subjects").json() if s["name"] == "Testapp betting")
+    assert kw["posts"] == sub["posts"] == d["k"]["posts"] == 3
+    assert sub["stories"] == d["stories_total"]
+
+
 def test_saved_keyword_lifecycle(client):
     # 1. Saving keyword creates Subject and triggers collection
     res = client.post("/api/keywords", json={"name": "Casino Regulation India", "aliases": ["casino law", "goa casinos"]})

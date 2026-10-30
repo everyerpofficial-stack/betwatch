@@ -20,7 +20,7 @@ from ..models import (
     article_subjects,
     utcnow,
 )
-from ..services.dashboard import fmt, iso
+from ..services.dashboard import Filters, fmt, iso, matching_posts
 
 log = logging.getLogger("betwatch.channel_profile")
 
@@ -589,13 +589,15 @@ def build_channel_profile_data(
         .where(Article.outlet_id == outlet_id)
         .order_by(func.coalesce(Article.published_at, Article.collected_at).desc())
     )
-    count_stmt = select(func.count(Article.id)).where(Article.outlet_id == outlet_id)
     if q.strip():
-        stmt = stmt.where(Article.title.ilike(f"%{q.strip()}%"))
-        count_stmt = count_stmt.where(Article.title.ilike(f"%{q.strip()}%"))  # pages must match the search
-
-    total_filtered_posts = db.scalar(count_stmt) or 0
-    arts = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
+        # Same search rule as the dashboard, so this channel's count here equals its count there
+        found = matching_posts(db, Filters(q=q, cat="All", time="all"), outlet_id=outlet_id)
+        found.sort(key=lambda a: a.published_at or a.collected_at, reverse=True)
+        total_filtered_posts = len(found)
+        arts = found[(page - 1) * page_size: page * page_size]
+    else:
+        total_filtered_posts = db.scalar(select(func.count(Article.id)).where(Article.outlet_id == outlet_id)) or 0
+        arts = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
 
     posts = [
         {

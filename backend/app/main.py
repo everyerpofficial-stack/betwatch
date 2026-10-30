@@ -33,7 +33,10 @@ from .models import (
 )
 from .security import is_public_http_url, require_admin
 from .services.channel_profile import build_channel_profile_data, sync_outlet_wikidata
-from .services.dashboard import Filters, build_dashboard, fmt, iso, meta, rankings, subjects_az, _first_ids, _majority_tone
+from .services.dashboard import (
+    Filters, build_dashboard, fmt, iso, keyword_coverage, meta, rankings, subjects_az, _data_version, _first_ids,
+    _majority_tone,
+)
 from .services.pdf_report import generate_channel_pdf, generate_subject_pdf
 
 log = logging.getLogger("betwatch.api")
@@ -371,11 +374,9 @@ def list_keywords(db: Session = Depends(get_db)):
     subs = db.scalars(select(Subject).order_by(Subject.name)).all()
     out = []
     now = utcnow()
+    version = _data_version(db)
     for s in subs:
-        post_count = db.scalar(
-            select(func.count(article_subjects.c.article_id))
-            .where(article_subjects.c.subject_id == s.id)
-        ) or 0
+        post_count = keyword_coverage(db, s.name, version)["posts"]  # what clicking the keyword lists
         last_run = db.scalar(
             select(CollectionRun)
             .where(CollectionRun.subject_id == s.id)

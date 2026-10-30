@@ -82,3 +82,90 @@ def contains_term(text: str, term: str) -> bool:
     if not term:
         return False
     return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text.lower()) is not None
+
+
+# ---------------------------------------------------------------- dashboard search
+# Letters, digits and combining marks. \w alone drops Indic vowel signs and virama, splitting Hindi words apart.
+_SEARCH_WORD = re.compile(r"[\ẁ-ͯऀ-෿᳐-᳿꣠-ꣿ]+")
+# Topic words nearly every post here contains. A subject tag only satisfies a query that also has a distinctive
+# word (or names the subject exactly), so "app" does not return every post tagged "Mahadev betting app".
+GENERIC_TOPIC_WORDS = frozenset(
+    "app apps application betting bet bets online gaming game games gambling casino law laws act bill case book "
+    "india indian fantasy sports sport real money ban rules rule platform platforms news "
+    "सट्टा सट्टे सट्टेबाजी बेटिंग जुआ गैंबलिंग ऑनलाइन गेमिंग गेम ऐप कानून बिल एक्ट नियम विधेयक भारत".split()
+)
+
+
+def search_words(text: str) -> list[str]:
+    """Search tokens: NFKC + casefold, zero-width joiners removed, split on anything not a letter, digit or mark."""
+    t = unicodedata.normalize("NFKC", text or "").casefold().replace("‌", "").replace("‍", "")
+    return _SEARCH_WORD.findall(t)
+
+
+def _word_hit(qw: str, w: str) -> bool:
+    """Whole word, a plural (apps), or a longer word it starts: 4+ letters (india→indian) or digits (ipl→ipl2026)."""
+    if w == qw:
+        return True
+    if not w.startswith(qw):
+        return False
+    rest = w[len(qw):]
+    return len(qw) >= 4 or rest.isdigit() or (len(qw) >= 3 and rest in ("s", "es"))
+
+
+class SearchQuery:
+    """A dashboard search: alternatives split by OR, each a list of words and "quoted phrases" that must all appear.
+
+    Words match whole words (see _word_hit), never the inside of another word, so "IPL" does not match "multiple".
+    """
+
+    def __init__(self, raw: str):
+        self.raw = (raw or "").strip()
+        self.norm = " ".join(search_words(self.raw))
+        self.alternatives: list[list[list[str]]] = []  # alternative -> terms -> words (a multi-word term is a phrase)
+        for part in re.split(r"\s+OR\s+|\|", self.raw):
+            terms = []
+            for phrase, token in re.findall(r'"([^"]*)"|(\S+)', part):
+                ws = search_words(phrase if phrase else re.sub(r"['’]s$", "", token, flags=re.IGNORECASE))
+                if ws:
+                    terms.append(ws)  # "e-game" or "U.S." stay together as a phrase
+            if terms:
+                self.alternatives.append(terms)
+
+    @classmethod
+    def any_phrase(cls, phrases: list[str]) -> "SearchQuery":
+        """Matches text containing any one of the phrases (a subject's name and aliases)."""
+        sq = cls("")
+        sq.alternatives = [[ws] for p in phrases if (ws := search_words(p))]
+        return sq
+
+    @staticmethod
+    def _has(term: list[str], words: list[str]) -> bool:
+        n = len(term)
+        return any(all(_word_hit(term[i], words[j + i]) for i in range(n)) for j in range(len(words) - n + 1))
+
+    def matches_words(self, words: list[str]) -> bool:
+        return any(all(self._has(t, words) for t in alt) for alt in self.alternatives)
+
+    def matches(self, text: str) -> bool:
+        return self.matches_words(search_words(text))
+
+    def names_subject(self, name: str, aliases: list[str]) -> bool:
+        """Whether this search is about the tracked subject: it is the subject's name, or a distinctive search
+        ("mahadev", "proga") found in its name or an alias. A generic search ("betting app") names no subject."""
+        if self.norm and " ".join(search_words(name)) == self.norm:
+            return True
+        for term in [name, *aliases]:
+            ws = search_words(term)
+            for alt in self.alternatives:
+                distinctive = any(w not in GENERIC_TOPIC_WORDS for t in alt for w in t)
+                if distinctive and all(self._has(t, ws) for t in alt):
+                    return True
+        return False
+
+    def sql_patterns(self) -> list[list[str]]:
+        """Per alternative, LIKE patterns every matching text satisfies (a superset; matches_words decides).
+
+        Stored Hindi may have a zero-width joiner after a virama (सट्‌टा), so the pattern allows anything there.
+        Words with a nukta are left out: a feed may store the precomposed letter, which LIKE would not match."""
+        return [[f"%{w.replace(chr(0x94D), chr(0x94D) + '%')}%" for t in alt for w in t if "़" not in w]
+                for alt in self.alternatives]
