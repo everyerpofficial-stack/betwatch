@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     admin_token: str = "change-me"
     home_country: str = "IN"  # outlets from this country count as "National"
     display_timezone: str = "Asia/Kolkata"
+    snapshot_url: str = ""  # serverless only: where the scheduled collector publishes the database (app/snapshot.py)
 
     # Worker
     embedded_worker: bool = False  # run the collector inside the API process (single-container dev)

@@ -168,6 +168,7 @@ def store_items(db: Session, source: Source | None, subject: Subject | None, ite
                 existing.author = it.author
             if existing.published_is_estimate and it.published_at and not it.published_is_estimate:
                 existing.published_at, existing.published_is_estimate = it.published_at, False
+                stats["clusters"] |= refile_post(db, existing)  # its story must not keep the date it was collected
             continue
 
         if it.published_at and it.published_at > now + timedelta(hours=1):

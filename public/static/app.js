@@ -191,7 +191,7 @@
     const failing = m.sources_failing ? ` · ${m.sources_failing} source(s) failing` : "";
     $("freshness").textContent = m.is_live
       ? `Updated ${m.last_success}${delay}${failing}`
-      : `Last collected ${m.last_success} — the collector is not running, so nothing newer is shown. Start it (EMBEDDED_WORKER=true or python -m app.worker).`;
+      : `Last collected ${m.last_success} — nothing newer has been collected. Check the Collect news workflow on GitHub (locally: python -m app.worker).`;
 
     $("subject").value = document.activeElement === $("subject") ? $("subject").value : S.q;
     $("suggestions").innerHTML = `<span class="muted">Try:</span>` + SUGGESTIONS.map((w) => `<button type="button" class="sugg" data-q="${esc(w)}">${esc(w)}</button>`).join("");

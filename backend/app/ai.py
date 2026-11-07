@@ -94,6 +94,8 @@ def summarize_clusters(db: Session, cluster_ids: set[int]) -> int:
                 for a in arts:
                     if a.tone_source != "ai":
                         a.tone, a.tone_source = data["tone"], "ai"
+        elif c.summary_source == "ai":
+            continue  # keep it; the count stays behind, so a later run with the LLM available brings it up to date
         else:
             c.summary, c.highlights = _fallback(arts)
             c.summary_source = "publisher"

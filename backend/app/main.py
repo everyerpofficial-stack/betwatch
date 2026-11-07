@@ -14,12 +14,14 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from . import snapshot
 from .config import get_settings
 from .frontend_assets import ADMIN_HTML, APP_JS, CHANNEL_HTML, INDEX_HTML, STORY_HTML, STYLES_CSS
 from .db import Base, SessionLocal, engine, get_db
@@ -72,7 +74,8 @@ async def lifespan(app: FastAPI):
             ]
             for cand in candidates:
                 if cand.exists() and cand.is_file() and cand.stat().st_size > 100000:
-                    if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < cand.stat().st_size:
+                    # Only when there is no real copy yet: a downloaded snapshot may be smaller and is still newer
+                    if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < 100000:
                         try:
                             import shutil
                             shutil.copyfile(cand, tmp_db)
@@ -112,6 +115,13 @@ async def vercel_path_rewrite_middleware(request: Request, call_next):
             request.scope["path"] = clean_path
     elif request.scope.get("path") in ("/api/index.py", "/api/index"):
         request.scope["path"] = "/"
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def snapshot_refresh_middleware(request: Request, call_next):
+    if snapshot.due():
+        await run_in_threadpool(snapshot.refresh)
     return await call_next(request)
 
 

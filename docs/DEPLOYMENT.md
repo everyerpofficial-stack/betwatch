@@ -23,6 +23,29 @@
 4. The `/admin` page and admin API are protected by `ADMIN_TOKEN`. Optionally also restrict `/admin` and
    `/api/admin` by IP or basic auth at the proxy.
 
+## Vercel with the scheduled collector
+
+Vercel keeps no files and cannot run a background collector. Without an external `DATABASE_URL`, the data flows like this:
+
+1. `.github/workflows/collect.yml` runs every 30 minutes on GitHub Actions: it downloads the last published database,
+   collects, and publishes the result as `betwatch.db` on the `data` release. It can also be started by hand from the
+   repository's Actions tab ("Collect news" → "Run workflow").
+2. Each Vercel instance downloads that file when it starts and checks for a newer one every 5 minutes
+   (`backend/app/snapshot.py`). No commit or redeploy is involved. If the download fails it keeps serving what it has.
+3. The database bundled in the repository (`backend/app/betwatch.db`) is only the fallback and the starting point of the
+   very first run.
+
+The release is the only full copy of what has been collected since the bundled database. Do not delete it. If
+`betwatch.db` is ever missing, the workflow continues from `betwatch-backup.db` (the previous run).
+
+Optional repository secrets (Settings → Secrets and variables → Actions): `ANTHROPIC_API_KEY` for AI summaries,
+`YOUTUBE_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`.
+
+Limits of this setup: anything written on the live site itself (saved keywords, saved searches, admin changes, "Fetch
+live news") lives only in one instance's temporary copy and is lost. To track a keyword permanently, add it to `SUBJECTS`
+in `backend/app/seed.py`. A hosted PostgreSQL removes these limits: set `DATABASE_URL` on Vercel (the snapshot mechanism
+then switches itself off) and change the workflow to collect into it instead of publishing a file.
+
 ## Upgrades
 
 ```bash

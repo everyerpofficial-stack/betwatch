@@ -146,3 +146,35 @@ def test_estimated_youtube_date_is_replaced_and_story_refiled(db):
     assert db.scalar(select(func.count(Cluster.id))) == 2
     today_story = db.scalar(select(Cluster).join(Article).where(Article.kind == "article"))
     assert today_story.article_count == 1 and today_story.first_seen == now
+
+
+def test_instagram_post_without_a_page_date_uses_the_google_news_date(db, monkeypatch):
+    feed = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+      <item><title>TEST no date on page</title><link>https://news.google.com/rss/articles/TESTA</link><pubDate>Sun, 22 May 2022 10:00:00 GMT</pubDate></item>
+      <item><title>TEST date on page</title><link>https://news.google.com/rss/articles/TESTB</link><pubDate>Mon, 23 May 2022 10:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    page_dates = {"TESTA": None, "TESTB": datetime(2022, 5, 20)}
+    monkeypatch.setattr("googlenewsdecoder.gnewsdecoder", lambda link: {"decoded_url": "https://www.instagram.com/p/" + link.rsplit("/", 1)[1] + "/"})
+    monkeypatch.setattr(adapters, "parse_instagram_post", lambda url, client=None: RawItem(
+        title="TEST post", url=url, outlet_name="@fixture", kind="social", platform="Instagram",
+        published_at=page_dates[url.split("/")[-2]], published_is_estimate=page_dates[url.split("/")[-2]] is None))
+    items = adapters.instagram_search(Source(name="ig", kind="instagram_search"), Subject(name="Fixture", query="Fixture"), mock_client(feed))
+    assert [(i.published_at, i.published_is_estimate) for i in items] == [(datetime(2022, 5, 22, 10), False), (datetime(2022, 5, 20), False)]
+
+
+def test_undated_post_seen_again_with_a_date_stops_looking_new(db):
+    subj = Subject(name="Fixtureapp", query="Fixtureapp", aliases=[])
+    db.add(subj)
+    db.commit()
+    post = dict(title="TEST: Fixtureapp reel from years ago", url="https://www.instagram.com/p/TESTOLD/", outlet_name="@fixture",
+                kind="social", platform="Instagram")
+    store_items(db, None, subj, [RawItem(**post, published_at=None, published_is_estimate=True)])
+    db.commit()
+    assert db.scalar(select(Cluster.last_seen)).year > 2022  # undated, so it sits at the collection time
+
+    stats = store_items(db, None, subj, [RawItem(**post, published_at=datetime(2022, 5, 22, 10))])
+    db.commit()
+    art = db.scalar(select(Article))
+    assert art.published_at == datetime(2022, 5, 22, 10) and not art.published_is_estimate and stats["new"] == 0
+    assert db.scalars(select(Cluster.last_seen)).all() == [datetime(2022, 5, 22, 10)]
+    assert art.cluster_id in stats["clusters"]

@@ -411,6 +411,9 @@ def instagram_search(source, subject, client) -> list[RawItem]:
                 if dec_url and ("instagram.com/reel/" in dec_url or "instagram.com/p/" in dec_url):
                     item = parse_instagram_post(dec_url, client)
                     if item:
+                        # Many post pages do not state their date. Without one the post would count as published today.
+                        if item.published_at is None and (when := _entry_dt(e)):
+                            item.published_at, item.published_is_estimate = when, False
                         items.append(item)
             except Exception:
                 continue

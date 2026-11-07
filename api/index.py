@@ -20,6 +20,8 @@ if os.environ.get("VERCEL"):
     if not current_db or current_db.startswith("sqlite"):
         tmp_db = "/tmp/betwatch.db"
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
+        # The scheduled collector publishes newer copies here (.github/workflows/collect.yml, app/snapshot.py)
+        os.environ.setdefault("SNAPSHOT_URL", "https://github.com/everyerpofficial-stack/betwatch/releases/download/data/betwatch.db")
 
         # Copy bundled database to /tmp if available and not yet present in /tmp
         for candidate in (
@@ -30,7 +32,7 @@ if os.environ.get("VERCEL"):
             Path("/var/task/backend/betwatch.db"),
         ):
             if candidate.exists() and candidate.is_file():
-                if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < candidate.stat().st_size:
+                if not os.path.exists(tmp_db) or os.path.getsize(tmp_db) < 100000:
                     try:
                         shutil.copyfile(candidate, tmp_db)
                         break
@@ -41,3 +43,6 @@ if os.environ.get("VERCEL"):
     os.environ["EMBEDDED_WORKER"] = "false"
 
 from app.main import app
+from app.snapshot import refresh
+
+refresh()  # before serving, so a new instance never shows the older bundled copy
