@@ -20,8 +20,7 @@ if os.environ.get("VERCEL"):
     if not current_db or current_db.startswith("sqlite"):
         tmp_db = "/tmp/betwatch.db"
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
-        # The scheduled collector publishes newer copies here (.github/workflows/collect.yml, app/snapshot.py)
-        os.environ.setdefault("SNAPSHOT_URL", "https://github.com/everyerpofficial-stack/betwatch/releases/download/data/betwatch.db")
+        # SNAPSHOT_URL (newer copies from the scheduled collector) defaults in app/config.py, which every entrypoint loads
 
         # Copy bundled database to /tmp if available and not yet present in /tmp
         for candidate in (

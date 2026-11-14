@@ -3,6 +3,10 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Where .github/workflows/collect.yml publishes the database. The default applies on Vercel whichever entrypoint it
+# runs (the FastAPI preset loads app/main.py directly and never runs api/index.py), so it must live here.
+PUBLISHED_SNAPSHOT = "https://github.com/everyerpofficial-stack/betwatch/releases/download/data/betwatch.db"
+
 
 class Settings(BaseSettings):
     """All configuration comes from environment variables (see .env.example)."""
@@ -13,7 +17,7 @@ class Settings(BaseSettings):
     admin_token: str = "change-me"
     home_country: str = "IN"  # outlets from this country count as "National"
     display_timezone: str = "Asia/Kolkata"
-    snapshot_url: str = ""  # serverless only: where the scheduled collector publishes the database (app/snapshot.py)
+    snapshot_url: str = PUBLISHED_SNAPSHOT if os.environ.get("VERCEL") else ""  # serverless only (app/snapshot.py)
 
     # Worker
     embedded_worker: bool = False  # run the collector inside the API process (single-container dev)
