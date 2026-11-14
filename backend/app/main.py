@@ -122,6 +122,8 @@ async def vercel_path_rewrite_middleware(request: Request, call_next):
 async def snapshot_refresh_middleware(request: Request, call_next):
     if snapshot.due():
         await run_in_threadpool(snapshot.refresh)
+    if snapshot.collect_due():  # after the refresh, so it judges the newest data this instance can have
+        await run_in_threadpool(snapshot.request_collection)
     return await call_next(request)
 
 

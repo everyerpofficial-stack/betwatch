@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     home_country: str = "IN"  # outlets from this country count as "National"
     display_timezone: str = "Asia/Kolkata"
     snapshot_url: str = PUBLISHED_SNAPSHOT if os.environ.get("VERCEL") else ""  # serverless only (app/snapshot.py)
+    # GitHub token allowed to run the Collect news workflow (fine-grained, Actions: read and write). With it, a visit to
+    # a deployment whose data is old starts a collection, because GitHub fires the workflow's schedule only every few hours.
+    github_dispatch_token: str = ""
 
     # Worker
     embedded_worker: bool = False  # run the collector inside the API process (single-container dev)

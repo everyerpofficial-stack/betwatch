@@ -1,6 +1,7 @@
 """How a deployment picks up the database the scheduled collector publishes."""
 import sqlite3
 import time
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy import create_engine, text
 from app import snapshot
 from app.ai import summarize_clusters
 from app.config import get_settings
-from app.models import Article, Cluster, Outlet, utcnow
+from app.models import Article, Cluster, Outlet, Source, utcnow
 
 URL = "https://example.test/betwatch.db"
 
@@ -126,6 +127,97 @@ def test_export_includes_the_write_ahead_log(live, tmp_path, monkeypatch):
     con = sqlite3.connect(out)
     assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     con.close()
+
+
+@pytest.fixture
+def github(db, monkeypatch):
+    """A deployment with a dispatch token, GitHub mocked: set `github.last_run` to the newest workflow run (or None),
+    or `github.error` to make every call fail. `github.calls` records (method, url)."""
+    class GitHub:
+        last_run = None
+        error = None
+        calls = []
+
+        def collected(self, minutes_ago):
+            db.add(Source(name="Feed", kind="rss", last_success_at=utcnow() - timedelta(minutes=minutes_ago)))
+            db.commit()
+
+        def run(self, status, minutes_ago=0):
+            at = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.last_run = {"status": status, "updated_at": at}
+
+        def dispatched(self):
+            return [u for m, u in self.calls if m == "POST" and u.endswith("/dispatches")]
+
+    g = GitHub()
+    g.calls = []
+
+    class FakeClient:
+        def __init__(self, headers=None, **kw):
+            assert headers["Authorization"] == "Bearer gh-token"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def _reply(self, method, url, body):
+            g.calls.append((method, url))
+            if g.error:
+                raise g.error
+            return httpx.Response(200 if method == "GET" else 204, json=body, request=httpx.Request(method, url))
+
+        def get(self, url, **kw):
+            return self._reply("GET", url, {"workflow_runs": [g.last_run] if g.last_run else []})
+
+        def post(self, url, **kw):
+            assert kw["json"] == {"ref": "main"}
+            return self._reply("POST", url, None)
+
+    monkeypatch.setattr(snapshot.httpx, "Client", FakeClient)
+    monkeypatch.setattr(snapshot, "_next_collect_check", 0.0)
+    monkeypatch.setattr(get_settings(), "github_dispatch_token", "gh-token")
+    return g
+
+
+def test_old_data_starts_a_collection_once(github):
+    github.collected(minutes_ago=200)
+    github.run("completed", minutes_ago=180)
+    assert snapshot.request_collection() is True
+    assert len(github.dispatched()) == 1 and github.dispatched()[0].endswith("/collect.yml/dispatches")
+    assert not snapshot.collect_due() and snapshot.request_collection() is False  # waits for that run's data
+
+
+def test_fresh_data_asks_github_nothing(github):
+    github.collected(minutes_ago=5)
+    assert snapshot.request_collection() is False and github.calls == []
+
+
+def test_no_second_run_while_one_is_under_way_or_just_finished(github):
+    github.collected(minutes_ago=200)
+    for status, ago in (("in_progress", 0), ("queued", 0), ("completed", 3)):
+        snapshot._next_collect_check = 0.0
+        github.run(status, ago)
+        assert snapshot.request_collection() is False
+    assert github.dispatched() == []
+
+
+def test_never_collected_starts_a_collection(github):
+    assert snapshot.request_collection() is True and len(github.dispatched()) == 1
+
+
+def test_github_failure_is_retried_later(github):
+    github.collected(minutes_ago=200)
+    github.error = httpx.ConnectError("down")
+    assert snapshot.request_collection() is False
+    assert snapshot._next_collect_check <= time.monotonic() + snapshot.CHECK_EVERY_SECONDS
+
+
+def test_without_a_token_no_collection_is_started(github, monkeypatch):
+    monkeypatch.setattr(get_settings(), "github_dispatch_token", "")
+    github.collected(minutes_ago=200)
+    assert snapshot.collect_due() is False and snapshot.request_collection() is False and github.calls == []
 
 
 def test_collector_without_llm_keeps_existing_ai_summary(db):

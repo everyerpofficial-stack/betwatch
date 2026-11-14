@@ -3,6 +3,8 @@ name: Collect news
 # Vercel keeps no files and cannot run a collector, so this job collects on a schedule and publishes the SQLite database
 # as an asset of the "data" release. Deployments download it from there (backend/app/snapshot.py), so fresh data needs
 # neither a commit nor a redeploy. Keep the schedule well under STALE_AFTER_MINUTES in services/dashboard.py.
+# GitHub fires this schedule only every few hours, so deployments with GITHUB_DISPATCH_TOKEN also start it (workflow_dispatch)
+# when someone visits and the data is over 30 minutes old (request_collection() in backend/app/snapshot.py).
 on:
   schedule:
     - cron: "7,37 * * * *"

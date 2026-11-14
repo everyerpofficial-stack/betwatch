@@ -34,6 +34,12 @@ Vercel keeps no files and cannot run a background collector. Without an external
    (`backend/app/snapshot.py`). No commit or redeploy is involved. If the download fails it keeps serving what it has.
 3. The database bundled in the repository (`backend/app/betwatch.db`) is only the fallback and the starting point of the
    very first run.
+4. GitHub fires the 30-minute schedule only every few hours in practice. With `GITHUB_DISPATCH_TOKEN` set on Vercel, a
+   visit to the site while its newest data is over 30 minutes old starts the workflow, so the news stays fresh whenever
+   people use the site (`request_collection()` in `backend/app/snapshot.py`). Create the token at GitHub → Settings →
+   Developer settings → Fine-grained tokens: repository access "Only select repositories" → this repository, permission
+   "Actions: Read and write". Add it in Vercel → Project → Settings → Environment Variables (Production), then redeploy.
+   When it expires the site falls back to the schedule; replace it the same way.
 
 The release is the only full copy of what has been collected since the bundled database. Do not delete it. If
 `betwatch.db` is ever missing, the workflow continues from `betwatch-backup.db` (the previous run).

@@ -414,6 +414,7 @@ def meta(db: Session) -> dict:
         "total_outlets": db.scalar(select(func.count(func.distinct(Article.outlet_id)))) or 0,
         "max_article_id": db.scalar(select(func.max(Article.id))) or 0,
         "ai_enabled": bool(s.anthropic_api_key),
+        "auto_collect": bool(s.github_dispatch_token),  # old data starts a collection run (app/snapshot.py)
         "youtube_enabled": True,  # YouTube scraping & search active
         "social_enabled": True,   # Instagram search & collection active
     }
